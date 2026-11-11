@@ -3,6 +3,7 @@ import os
 # 1. 8x8 Grid
 GRID_SIZE = 8
 NUM_CHANNELS = 3  # 3 lớp thông tin: [0: Ô trống, 1: Vật cản, 2: Agent]
+STATE_SHAPE = (NUM_CHANNELS, GRID_SIZE, GRID_SIZE) # (C, H, W)
 
 MIN_OBSTACLES = 5  # Số vật cản tối thiểu
 MAX_OBSTACLES = 10  # Số vật cản tối đa

@@ -29,12 +29,18 @@ class GridEnv8x8:
         cols = choice % self.grid_size
         self.obstacles = set(zip(rows[:-1], cols[:-1]))
         self.agent_position = (rows[-1], cols[-1])
-        return self.get_state()
+        return self.get_state(), {}
 
 
     def get_state(self):
         states = np.zeros((config.NUM_CHANNELS, self.grid_size, self.grid_size), dtype=np.float32)
-        states[0, *self.agent_position] = 1.0
-        states[1, *zip(*self.obstacles)] = 1.0
+        states[0, :, :] = 1.0  # Blanks
+
+        states[1, *zip(*self.obstacles)] = 1.0 # Obstacles
+        states[0, *zip(*self.obstacles)] = 0.0 # Remove blanks
+
+        states[2, *self.agent_position] = 1.0 # Agent
+        states[0, *self.agent_position] = 0.0 # Remove blanks
+        
         return states
         
