@@ -1,5 +1,6 @@
 import os
 
+
 # 1. 8x8 Grid
 GRID_SIZE = 8
 NUM_CHANNELS = 3  # 3 lớp thông tin: [0: Ô trống, 1: Vật cản, 2: Agent]
@@ -31,3 +32,8 @@ PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(PACKAGE_DIR, "..", ".."))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 DATASET_PATH = os.path.join(DATA_DIR, "dataset.npz")
+
+
+# 5 Collect data
+TOTAL_EPISODES = 50000
+    
