@@ -5,6 +5,7 @@ from world_model_grid.env import GridEnv8x8
 
 
 def test_init_and_reset():
+    """Khởi tạo và reset tạo state hợp lệ, tái lập được theo seed."""
     env = GridEnv8x8()
     assert env.grid_size == config.GRID_SIZE
     assert env.min_obstacles == config.MIN_OBSTACLES
@@ -29,6 +30,7 @@ def test_init_and_reset():
 
 
 def test_step_direction_and_step_count():
+    """Mỗi action di chuyển đúng hướng và tăng bộ đếm một bước."""
     env = GridEnv8x8()
     env.reset(seed=42)
     env.agent_position = (4, 4)
@@ -65,6 +67,7 @@ def test_step_direction_and_step_count():
 
 
 def test_collision():
+    """Va vào vật cản kết thúc episode và giữ agent ở vị trí cũ."""
     env = GridEnv8x8()
     env.reset(seed=42)
     env.agent_position = (4, 4)
@@ -76,6 +79,7 @@ def test_collision():
 
 
 def test_out_of_bounds():
+    """Đi ra ngoài bất kỳ cạnh nào được tính là va chạm."""
     env = GridEnv8x8()
     env.reset(seed=42)
     env.obstacles = set()  # No obstacles
@@ -94,6 +98,7 @@ def test_out_of_bounds():
 
 
 def test_truncation():
+    """Agent còn sống ở giới hạn bước thì episode bị truncated."""
     env = GridEnv8x8()
     env.reset(seed=42)
     env.obstacles = set()  # No obstacles
@@ -111,6 +116,7 @@ def test_truncation():
 
 
 def test_collision_on_last_step():
+    """Va chạm đúng ở bước giới hạn là terminated, không phải truncated."""
     env = GridEnv8x8()
     env.reset(seed=42)
     env.obstacles = {(3, 5)}  # Place an obstacle above the agent
