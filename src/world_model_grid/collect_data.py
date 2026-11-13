@@ -1,3 +1,5 @@
+"""Thu thập dữ liệu episode cho môi trường world_model_grid."""
+
 import numpy as np
 
 from . import config
@@ -6,7 +8,21 @@ from .env import GridEnv8x8
 dataset = []
 env = GridEnv8x8()
 
+
 def main():
+    """Tạo dataset từ policy ngẫu nhiên và random walk an toàn.
+
+    Hàm thu thập TOTAL_EPISODES episode. 70% episode dùng policy chọn đều
+    giữa bốn hành động; 30% còn lại chọn ngẫu nhiên trong các hành động không
+    va chạm ngay ở bước kế tiếp. Các episode được xáo trộn rồi lưu thành
+    data/dataset.npz.
+
+    Notes
+    -----
+    Dataset được giữ trong bộ nhớ cho đến khi toàn bộ episode đã thu thập.
+    Do độ dài episode khác nhau, từng trường được lưu thành mảng dtype=object.
+    Trường terminated được lưu; cờ truncated chỉ dùng để dừng vòng episode.
+    """
     # 70% Random policy
     for episode in range(int(config.TOTAL_EPISODES * 0.7)):
         state, _ = env.reset(seed=episode)
