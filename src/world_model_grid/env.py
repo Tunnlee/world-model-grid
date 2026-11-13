@@ -73,7 +73,7 @@ class GridEnv8x8:
             self.agent_position = (new_row, new_col)
 
         # Check for truncation
-        if self.current_step >= config.MAX_STEPS_PER_EPISODE:
+        if self.current_step == config.MAX_STEPS_PER_EPISODE:
             if terminated:
                 truncated = False
             else:
