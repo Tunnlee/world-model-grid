@@ -2,6 +2,17 @@
 
 Môi trường grid 8×8 nhỏ để xây dựng và thử nghiệm world model cho bài toán học tăng cường. Mục tiêu hiện tại là để agent sống sót càng lâu càng tốt bằng cách tránh vật cản và biên lưới.
 
+## Nguồn cảm hứng
+
+Ý tưởng xây dựng một môi trường nhỏ để nghiên cứu world model được tham khảo từ bài báo:
+
+> David Ha and Jürgen Schmidhuber. “World Models.” arXiv preprint arXiv:1803.10122 (2018). https://doi.org/10.48550/arXiv.1803.10122
+
+- Bản ghi arXiv: https://arxiv.org/abs/1803.10122
+- Bản trình bày tương tác của tác giả: https://worldmodels.github.io/
+
+Repo này là project học tập độc lập với môi trường grid 8×8; phần triển khai hiện tại không phải bản tái tạo kiến trúc hay kết quả thực nghiệm của bài báo.
+
 ## Trạng thái hiện tại
 
 Repo hiện có:
