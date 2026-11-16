@@ -36,4 +36,7 @@ DATASET_PATH = os.path.join(DATA_DIR, "dataset.npz")
 
 # 5 Collect data
 TOTAL_EPISODES = 50000
-    
+
+# 6 Model V
+BATCH_SIZE = 128
+NUM_EPOCHS = 100
