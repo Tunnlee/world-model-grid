@@ -5,11 +5,10 @@ import numpy as np
 from . import config
 from .env import GridEnv8x8
 
-dataset = []
-env = GridEnv8x8()
-
 
 def main():
+    dataset = []
+    env = GridEnv8x8()
     """Tạo dataset từ policy ngẫu nhiên và random walk an toàn.
 
     Hàm thu thập TOTAL_EPISODES episode. 70% episode dùng policy chọn đều
@@ -104,10 +103,9 @@ def main():
                 "actions": np.array(actions, dtype=np.int64),
                 "rewards": np.array(rewards, dtype=np.float32),
                 "next_states": np.array(next_states, dtype=np.float32),
-                "terminated": np.array(terminateds, dtype=np.bool_),
+                "terminated": np.array(terminateds, dtype=np.bool),
             }
         )
-
 
     rng = np.random.default_rng(seed=42)
     rng.shuffle(dataset)

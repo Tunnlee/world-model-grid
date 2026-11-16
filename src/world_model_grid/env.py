@@ -1,4 +1,5 @@
 import numpy as np
+
 try:
     from . import config
 except ImportError:
@@ -29,7 +30,6 @@ class GridEnv8x8:
         self.obstacles = set()  # Set of tuples
         self.current_step = 0
         self.rng = np.random.default_rng()
-
 
     def reset(self, seed: int | None = None) -> tuple[np.ndarray, dict]:
         """Tạo episode mới và trả về observation ban đầu.
@@ -65,7 +65,6 @@ class GridEnv8x8:
         self.agent_position = (rows[-1], cols[-1])
         return self.get_state(), {}
 
-
     def get_state(self) -> np.ndarray:
         """Mã hóa bố trí hiện tại thành observation dạng one-hot theo ô.
 
@@ -91,7 +90,6 @@ class GridEnv8x8:
         states[0, *self.agent_position] = 0.0  # Remove blanks
 
         return states
-
 
     def step(self, action: int) -> tuple[np.ndarray, float | int, bool, bool, dict]:
         """Thực hiện một hành động và chuyển môi trường sang bước kế tiếp.
@@ -136,7 +134,9 @@ class GridEnv8x8:
         new_col = self.agent_position[1] + a_cols
 
         # Check for termination
-        if self.is_collision(new_row, new_col) or self.is_out_of_bounds(new_row, new_col):
+        if self.is_collision(new_row, new_col) or self.is_out_of_bounds(
+            new_row, new_col
+        ):
             reward = config.REWARD_COLLISION
             terminated = True
         else:
@@ -149,10 +149,9 @@ class GridEnv8x8:
                 truncated = False
             else:
                 truncated = True
-                
-        # Return 
-        return self.get_state(), reward, terminated, truncated, {}
 
+        # Return
+        return self.get_state(), reward, terminated, truncated, {}
 
     def is_out_of_bounds(self, row: int, col: int) -> bool:
         """Kiểm tra tọa độ có nằm ngoài lưới hay không.
@@ -169,7 +168,7 @@ class GridEnv8x8:
         bool
             True nếu hàng hoặc cột nằm ngoài khoảng hợp lệ.
         """
-        return not (0 <= row < self.grid_size and 0 <= col < self.grid_size) 
+        return not (0 <= row < self.grid_size and 0 <= col < self.grid_size)
 
     def is_collision(self, row: int, col: int) -> bool:
         """Kiểm tra tọa độ có trùng với một vật cản hay không.
