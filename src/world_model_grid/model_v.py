@@ -20,7 +20,7 @@ class GridDataset(Dataset):
         if states.ndim != 4:
             raise ValueError("States must be a 4D array")
 
-        self.inputs = torch.from_numpy(states.reshape(-1, flatten_dim)) Shape (N, 128)
+        self.inputs = torch.from_numpy(states.reshape(-1, flatten_dim)) # Shape (N, 128)
         self.targets = torch.from_numpy(states.argmax(axis=1)) #Shape (N, 8, 8)
 
     def __len__(self) -> int:
@@ -31,8 +31,6 @@ class GridDataset(Dataset):
 
 
 
-
-
 def load_dataset():
     with np.load(config.DATASET_PATH, allow_pickle=True) as data:
         dataset = data["states"]
@@ -40,13 +38,21 @@ def load_dataset():
         dataset[: int(config.TOTAL_EPISODES * 0.9)], axis=0
     )  # Concatenate iterates list of pointers
     val_states = np.concatenate(dataset[int(config.TOTAL_EPISODES * 0.9) :], axis=0)
+    return train_states, val_states
 
 
 
 def quick_test():
+    train_states, _ = load_dataset()
     train_dataset = GridDataset(train_states)
 
     x, y = train_dataset[0,:]
 
     print("Input :", x.shape, x.dtype)
     print("Target:", y.shape, y.dtype)
+    print(len(train_dataset))
+
+def main():
+    train_states, val_states = load_dataset()
+
+quick_test()

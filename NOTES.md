@@ -20,3 +20,16 @@ Ngày 2:
     Đã làm:
     - Code step(action) và ghi test_env
     - Code collect_data và thu thập data vào dataset.npz
+
+
+Ngày 3:
+    Viết Docstring và README
+
+Ngày 4:
+    Đã làm:
+        Code autoencoder from scratch để chuẩn bị kiến thức nền cho model V.
+    Đã học:
+        Cấu trúc OOP của một số class Pytorch
+        Cách autograd và optimizer hoạt động
+
+Ngày 5

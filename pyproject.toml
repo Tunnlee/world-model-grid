@@ -7,7 +7,9 @@ authors = [
     { name = "ILunbn", email = "trungtuan513@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "torchvision>=0.29.2",
+]
 
 [project.scripts]
 world-model-grid = "world_model_grid:main"
