@@ -7,19 +7,10 @@ except ImportError:
 
 
 class GridEnv8x8:
-    """Môi trường lưới 8×8 với vật cản tĩnh và một agent.
-
-    Observation dùng ba channel: ô trống, vật cản và vị trí agent.
-    Episode kết thúc tự nhiên khi agent va chạm; episode đang sống bị
-    truncated khi đạt giới hạn số bước.
-    """
+    """8×8 grid environment with static obstacles and one agent."""
 
     def __init__(self):
-        """Khởi tạo môi trường trước khi bắt đầu một episode.
-
-        Các giá trị cấu hình được sao chép vào instance. Vị trí agent và
-        vật cản chỉ được tạo khi gọi reset().
-        """
+        """Initialize configuration, empty state, and random generator."""
         # Config values
         self.grid_size = config.GRID_SIZE
         self.min_obstacles = config.MIN_OBSTACLES
@@ -32,21 +23,17 @@ class GridEnv8x8:
         self.rng = np.random.default_rng()
 
     def reset(self, seed: int | None = None) -> tuple[np.ndarray, dict]:
-        """Tạo episode mới và trả về observation ban đầu.
+        """Start a new episode and return its initial observation.
 
         Parameters
         ----------
-        seed : int or None, optional
-            Seed dùng để khởi tạo lại bộ sinh số ngẫu nhiên. Cùng một seed
-            sẽ tạo cùng bố trí vật cản và vị trí agent.
+        seed : int or None
+            Optional seed for reproducible layouts.
 
         Returns
         -------
-        observation : numpy.ndarray
-            State ban đầu có shape (NUM_CHANNELS, GRID_SIZE, GRID_SIZE)
-            và dtype float32.
-        info : dict
-            Thông tin phụ; hiện là dictionary rỗng.
+        tuple
+            Initial state and an empty info dictionary.
         """
         self.current_step = 0
         if seed is not None:
@@ -66,17 +53,12 @@ class GridEnv8x8:
         return self.get_state(), {}
 
     def get_state(self) -> np.ndarray:
-        """Mã hóa bố trí hiện tại thành observation dạng one-hot theo ô.
+        """Return the current grid as a three-channel float32 array.
 
         Returns
         -------
         numpy.ndarray
-            Mảng float32 có shape (3, GRID_SIZE, GRID_SIZE). Channel 0 đánh
-            dấu ô trống, channel 1 đánh dấu vật cản, channel 2 đánh dấu agent.
-
-        Notes
-        -----
-        Cần gọi reset() trước để đặt vị trí agent.
+            State shaped (3, GRID_SIZE, GRID_SIZE). Call reset() first.
         """
         states = np.zeros(
             (config.NUM_CHANNELS, self.grid_size, self.grid_size), dtype=np.float32
@@ -92,36 +74,22 @@ class GridEnv8x8:
         return states
 
     def step(self, action: int) -> tuple[np.ndarray, float | int, bool, bool, dict]:
-        """Thực hiện một hành động và chuyển môi trường sang bước kế tiếp.
+        """Apply an action and return the resulting transition.
 
         Parameters
         ----------
         action : int
-            ID hành động, phải là một trong các giá trị trong ACTION_MAP.
+            Action ID from ACTION_MAP.
 
         Returns
         -------
-        observation : numpy.ndarray
-            State sau hành động. Nếu va chạm, agent giữ nguyên vị trí.
-        reward : float or int
-            Reward của bước đi: REWARD_SAFE_STEP nếu an toàn, hoặc
-            REWARD_COLLISION nếu va chạm/ra ngoài biên.
-        terminated : bool
-            True nếu agent kết thúc episode do va chạm hoặc ra ngoài biên.
-        truncated : bool
-            True nếu episode còn sống nhưng đạt MAX_STEPS_PER_EPISODE.
-        info : dict
-            Thông tin phụ; hiện là dictionary rỗng.
+        tuple
+            State, reward, terminated, truncated, and info.
 
         Raises
         ------
         KeyError
-            Nếu action không có trong ACTION_MAP.
-
-        Notes
-        -----
-        Phải gọi reset() trước step(). Người gọi nên dừng episode khi
-        terminated hoặc truncated trở thành True.
+            If action is not in ACTION_MAP.
         """
         # Set up flags
         terminated = False
@@ -154,35 +122,31 @@ class GridEnv8x8:
         return self.get_state(), reward, terminated, truncated, {}
 
     def is_out_of_bounds(self, row: int, col: int) -> bool:
-        """Kiểm tra tọa độ có nằm ngoài lưới hay không.
+        """Check whether a grid coordinate is outside the board.
 
         Parameters
         ----------
-        row : int
-            Chỉ số hàng cần kiểm tra.
-        col : int
-            Chỉ số cột cần kiểm tra.
+        row, col : int
+            Grid coordinates.
 
         Returns
         -------
         bool
-            True nếu hàng hoặc cột nằm ngoài khoảng hợp lệ.
+            True if the coordinate is outside the board.
         """
         return not (0 <= row < self.grid_size and 0 <= col < self.grid_size)
 
     def is_collision(self, row: int, col: int) -> bool:
-        """Kiểm tra tọa độ có trùng với một vật cản hay không.
+        """Check whether a coordinate contains an obstacle.
 
         Parameters
         ----------
-        row : int
-            Chỉ số hàng cần kiểm tra.
-        col : int
-            Chỉ số cột cần kiểm tra.
+        row, col : int
+            Grid coordinates.
 
         Returns
         -------
         bool
-            True nếu tọa độ thuộc tập vật cản.
+            True if the coordinate is blocked.
         """
         return (row, col) in self.obstacles
