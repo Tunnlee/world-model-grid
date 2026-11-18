@@ -1,6 +1,5 @@
 import os
 
-
 # 1. 8x8 Grid
 GRID_SIZE = 8
 NUM_CHANNELS = 3  # 3 lớp thông tin: [0: Ô trống, 1: Vật cản, 2: Agent]
@@ -31,16 +30,20 @@ REWARD_COLLISION = -10.0  # Tông đá hoặc va biên: trừ 10 điểm
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(PACKAGE_DIR, "..", ".."))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-DATASET_PATH = os.path.join(DATA_DIR, "dataset.npz")
-
+TRAIN_DATASET_PATH = os.path.join(DATA_DIR, "train_dataset.npz")
+VAL_DATASET_PATH = os.path.join(DATA_DIR, "val_dataset.npz")
+WEIGHT_DIR = os.path.join(PROJECT_ROOT, "weights")
+MODEL_V_PARAMETERS_PATH = os.path.join(WEIGHT_DIR, "model_v_parameters.pth")
 
 # 5 Collect data
-TOTAL_EPISODES = 50000
+TOTAL_EPISODES_TRAIN = 100000
+TOTAL_EPISODES_VAL = 10000
 
 # 6 Model V
-TOTAL_EPOCHS = 20
-BATCH_SIZE = 128
+TOTAL_EPOCHS = 50
+BATCH_SIZE = 256
 NUM_EPOCHS = 100
 FLATTEN_DIM = GRID_SIZE * GRID_SIZE * NUM_CHANNELS
 HIDDEN_DIM = 64
 LATENT_DIM = 16
+LEARNING_RATE = 0.0015
