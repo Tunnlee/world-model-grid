@@ -1,6 +1,6 @@
 """Thu thập dữ liệu episode cho môi trường world_model_grid."""
 
-import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -10,28 +10,22 @@ from .env import GridEnv8x8
 
 
 def main(mode: str) -> None:
-    """Collect one dataset split from the grid environment.
+    """Collect and save the requested dataset split.
 
     Parameters
     ----------
     mode : {"train", "val"}
-        Selects the training or validation split. The training split contains
-        ``TOTAL_EPISODES_TRAIN`` episodes; the validation split contains
-        ``TOTAL_EPISODES_VAL`` episodes.
+        Split to collect.
 
     Raises
     ------
     ValueError
-        If ``mode`` is not ``"train"`` or ``"val"``.
+        If mode is not "train" or "val".
 
     Notes
     -----
-    Each split mixes a uniformly random policy (70% of episodes) with a
-    one-step safe random walk (30%). Episodes are shuffled before they are
-    saved. The collector stores ``terminated`` but uses ``truncated`` only to
-    stop episodes at the configured step limit. Variable-length episodes are
-    stored as NumPy object arrays, and the entire split is held in memory
-    until saving.
+    Each split uses 70% random and 30% one-step safe episodes. Ragged episode
+    arrays are saved to the configured NPZ path; truncated flags are omitted.
     """
     if mode not in {"train", "val"}:
         raise ValueError("mode must be either 'train' or 'val'")
@@ -244,10 +238,6 @@ def main(mode: str) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Collect a grid dataset split.")
-    parser.add_argument(
-        "mode",
-        choices=("train", "val"),
-        help="dataset split to collect",
-    )
-    main(parser.parse_args().mode)
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python -m world_model_grid.collect_data {train,val}")
+    main(sys.argv[1].strip().lower())
