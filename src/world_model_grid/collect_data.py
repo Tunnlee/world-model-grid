@@ -1,30 +1,44 @@
 """Thu thập dữ liệu episode cho môi trường world_model_grid."""
 
-import sys
+import argparse
+from pathlib import Path
 
 import numpy as np
 
-import config
-from env import GridEnv8x8
+from . import config
+from .env import GridEnv8x8
 
 
-def main(mode):
+def main(mode: str) -> None:
+    """Collect one dataset split from the grid environment.
+
+    Parameters
+    ----------
+    mode : {"train", "val"}
+        Selects the training or validation split. The training split contains
+        ``TOTAL_EPISODES_TRAIN`` episodes; the validation split contains
+        ``TOTAL_EPISODES_VAL`` episodes.
+
+    Raises
+    ------
+    ValueError
+        If ``mode`` is not ``"train"`` or ``"val"``.
+
+    Notes
+    -----
+    Each split mixes a uniformly random policy (70% of episodes) with a
+    one-step safe random walk (30%). Episodes are shuffled before they are
+    saved. The collector stores ``terminated`` but uses ``truncated`` only to
+    stop episodes at the configured step limit. Variable-length episodes are
+    stored as NumPy object arrays, and the entire split is held in memory
+    until saving.
+    """
+    if mode not in {"train", "val"}:
+        raise ValueError("mode must be either 'train' or 'val'")
+
     if mode == "train":
         dataset = []
         env = GridEnv8x8()
-        """Tạo dataset từ policy ngẫu nhiên và random walk an toàn.
-
-        Hàm thu thập TOTAL_EPISODES episode. 70% episode dùng policy chọn đều
-        giữa bốn hành động; 30% còn lại chọn ngẫu nhiên trong các hành động không
-        va chạm ngay ở bước kế tiếp. Các episode được xáo trộn rồi lưu thành
-        data/dataset.npz.
-
-        Notes
-        -----
-        Dataset được giữ trong bộ nhớ cho đến khi toàn bộ episode đã thu thập.
-        Do độ dài episode khác nhau, từng trường được lưu thành mảng dtype=object.
-        Trường terminated được lưu; cờ truncated chỉ dùng để dừng vòng episode.
-        """
         # 70% Random policy
         for episode in range(int(config.TOTAL_EPISODES_TRAIN * 0.7)):
             state, _ = env.reset(seed=episode)
@@ -113,6 +127,7 @@ def main(mode):
         rng = np.random.default_rng(seed=42)
         rng.shuffle(dataset)
 
+        Path(config.DATA_DIR).mkdir(parents=True, exist_ok=True)
         np.savez(
             config.TRAIN_DATASET_PATH,
             states=np.array([ep["states"] for ep in dataset], dtype=object),
@@ -125,19 +140,6 @@ def main(mode):
     elif mode == "val":
         dataset = []
         env = GridEnv8x8()
-        """Tạo dataset từ policy ngẫu nhiên và random walk an toàn.
-
-        Hàm thu thập TOTAL_EPISODES episode. 70% episode dùng policy chọn đều
-        giữa bốn hành động; 30% còn lại chọn ngẫu nhiên trong các hành động không
-        va chạm ngay ở bước kế tiếp. Các episode được xáo trộn rồi lưu thành
-        data/dataset.npz.
-
-        Notes
-        -----
-        Dataset được giữ trong bộ nhớ cho đến khi toàn bộ episode đã thu thập.
-        Do độ dài episode khác nhau, từng trường được lưu thành mảng dtype=object.
-        Trường terminated được lưu; cờ truncated chỉ dùng để dừng vòng episode.
-        """
         # 70% Random policy
         for episode in range(int(config.TOTAL_EPISODES_VAL * 0.7)):
             state, _ = env.reset(seed=episode + config.TOTAL_EPISODES_TRAIN)
@@ -230,6 +232,7 @@ def main(mode):
         rng = np.random.default_rng(seed=42)
         rng.shuffle(dataset)
 
+        Path(config.DATA_DIR).mkdir(parents=True, exist_ok=True)
         np.savez(
             config.VAL_DATASET_PATH,
             states=np.array([ep["states"] for ep in dataset], dtype=object),
@@ -241,4 +244,10 @@ def main(mode):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1].strip().lower())
+    parser = argparse.ArgumentParser(description="Collect a grid dataset split.")
+    parser.add_argument(
+        "mode",
+        choices=("train", "val"),
+        help="dataset split to collect",
+    )
+    main(parser.parse_args().mode)
