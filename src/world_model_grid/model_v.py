@@ -100,7 +100,6 @@ def weight_distribution(targets):
 
 def train(vision_model, train_loader, optimizer, device):
     vision_model.train()
-    best_loss = float("inf")
 
     total_loss = 0
 

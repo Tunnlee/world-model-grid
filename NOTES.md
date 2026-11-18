@@ -32,4 +32,29 @@ Ngày 4:
         Cấu trúc OOP của một số class Pytorch
         Cách autograd và optimizer hoạt động
 
-Ngày 5
+Ngày 5:
+    Đã làm:
+        Thu thập dữ liệu cho model_v
+        Viết class kế thừa Dataset và class Dataloader
+    Đã học:
+        Sơ bộ về class kế thừa Dataset 
+        
+Ngày 6:
+    Đã học:
+        Khái niệm one hot
+        Cách softmax và Cross Entropy Loss hoạt động
+    Câu hỏi:
+        Non-linear activation đóng vai trò gì? Có cách nào diễn giải cách nó hoạt động một cách trực quan không?
+        Cách thuật toán optimizer Adam hoạt động
+    Đã làm:
+        Tạo class ModelV và huấn luyện thử
+
+Ngày 7: 
+    Đã học:
+        Cách tinh chỉnh learning rate
+        Cách theo dõi loss
+        Cách log wandb
+    Đã làm:
+        Run thử vài lần với các learning rate và batch size khác nhau
+        Đánh giá kết quả
+        Log các thông số vào wandb
