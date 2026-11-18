@@ -12,13 +12,7 @@ import wandb
 
 
 def quick_test() -> None:
-    """Print the shapes and dtypes from one training batch.
-
-    Notes
-    -----
-    This helper loads the configured training dataset through
-    :func:`get_data_loader` and is intended for a quick input-pipeline check.
-    """
+    """Print one training batch's input and target shapes."""
     train_loader = get_data_loader("train")
     batch = next(iter(train_loader))
     print(batch[0].shape, batch[0].dtype)
@@ -26,28 +20,26 @@ def quick_test() -> None:
 
 
 class GridDataset(Dataset):
-    """Flatten grid observations and derive per-cell class targets."""
+    """Flatten observations and create per-cell class labels."""
 
     def __init__(
         self,
         states: torch.Tensor,
         flatten_dim: int = config.FLATTEN_DIM,
     ):
-        """Create input vectors and class-index targets from grid states.
+        """Create flattened inputs and class-index targets.
 
         Parameters
         ----------
         states : torch.Tensor
-            Observations with shape ``(n_states, channels, height, width)``.
-            The channels are expected to encode the grid cell classes.
+            State tensor shaped (n_states, channels, height, width).
         flatten_dim : int, optional
-            Number of values in a flattened observation. Defaults to the
-            configured grid size times the number of channels.
+            Flattened input size. Defaults to the configured grid size.
 
         Raises
         ------
         ValueError
-            If ``states`` is not a four-dimensional tensor.
+            If states is not four-dimensional.
         """
         super().__init__()
 
@@ -58,38 +50,33 @@ class GridDataset(Dataset):
         self.targets = states.argmax(axis=1)  # Shape (N, 8, 8)
 
     def __len__(self) -> int:
-        """Return the number of grid states in the dataset.
+        """Return the number of observations.
 
         Returns
         -------
         int
-            Number of observations.
+            Dataset size.
         """
         return self.inputs.shape[0]
 
     def __getitem__(self, idx: int):
-        """Return one flattened observation and its per-cell labels.
+        """Return one input vector and its cell labels.
 
         Parameters
         ----------
         idx : int
-            Index of the observation to retrieve.
+            Observation index.
 
         Returns
         -------
         tuple of torch.Tensor
-            The flattened input vector and a ``(height, width)`` tensor of
-            integer class labels.
+            Flattened input and (height, width) target.
         """
         return self.inputs[idx], self.targets[idx]
 
 
 class ModelV(nn.Module):
-    """Encode a grid observation into a latent vector and reconstruct it.
-
-    The decoder returns unnormalized per-cell class logits. A spatial view of
-    those logits is used with cross-entropy loss during training.
-    """
+    """MLP autoencoder that reconstructs flattened grid states."""
 
     def __init__(
         self,
@@ -97,16 +84,16 @@ class ModelV(nn.Module):
         hidden_dim=config.HIDDEN_DIM,
         latent_dim=config.LATENT_DIM,
     ):
-        """Initialize the encoder and decoder multilayer perceptrons.
+        """Initialize the encoder and decoder.
 
         Parameters
         ----------
-        flatten_dim : int, optional
-            Number of values in a flattened grid observation.
-        hidden_dim : int, optional
-            Width of the hidden layer in both encoder and decoder.
-        latent_dim : int, optional
-            Width of the compressed latent representation.
+        flatten_dim : int
+            Flattened state size.
+        hidden_dim : int
+            Hidden layer width.
+        latent_dim : int
+            Latent vector size.
         """
         super().__init__()
         self.encoder = nn.Sequential(
@@ -121,18 +108,17 @@ class ModelV(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Encode and reconstruct a batch of flattened grid observations.
+        """Encode and reconstruct a batch of states.
 
         Parameters
         ----------
         x : torch.Tensor
-            Input tensor with shape ``(batch_size, flatten_dim)``.
+            Input shaped (batch_size, flatten_dim).
 
         Returns
         -------
         torch.Tensor
-            Unnormalized reconstruction logits with shape
-            ``(batch_size, flatten_dim)``.
+            Reconstruction logits with the input shape.
         """
         latent = self.encoder(x)
         x_recon = self.decoder(latent)
@@ -140,28 +126,22 @@ class ModelV(nn.Module):
 
 
 def get_data_loader(mode: str) -> DataLoader:
-    """Load a configured dataset split and wrap it in a DataLoader.
+    """Load a train or validation split.
 
     Parameters
     ----------
     mode : {"train", "val"}
-        Selects the training or validation NPZ file.
+        Dataset split to load.
 
     Returns
     -------
-    torch.utils.data.DataLoader
-        Batches of flattened state inputs and per-cell class targets. Training
-        batches are shuffled; validation batches preserve dataset order.
+    DataLoader
+        Batches of flattened states and cell labels.
 
     Raises
     ------
     ValueError
-        If ``mode`` is neither ``"train"`` nor ``"val"``.
-
-    Notes
-    -----
-    The NPZ files contain variable-length episodes stored as object arrays,
-    so loading enables pickle and concatenates their state sequences.
+        If mode is unsupported.
     """
     if mode == "train":
         with np.load(config.TRAIN_DATASET_PATH, allow_pickle=True) as train_dataset:
@@ -187,18 +167,17 @@ def get_data_loader(mode: str) -> DataLoader:
 
 
 def weight_distribution(targets: torch.Tensor) -> torch.Tensor:
-    """Compute inverse-frequency weights for the grid cell classes.
+    """Compute inverse-frequency class weights.
 
     Parameters
     ----------
     targets : torch.Tensor
-        Integer class labels, typically shaped ``(batch, height, width)``.
+        Integer class labels.
 
     Returns
     -------
     torch.Tensor
-        One weight per configured class. Classes absent from the batch receive
-        a clamped count to avoid division by zero.
+        One weight per configured class.
     """
     counts = torch.bincount(targets.flatten(), minlength=config.NUM_CHANNELS).clamp(
         min=1
@@ -213,23 +192,23 @@ def train(
     optimizer: optim.Optimizer,
     device: torch.device,
 ) -> float:
-    """Run one training epoch over the training data.
+    """Train the model for one epoch.
 
     Parameters
     ----------
     vision_model : ModelV
-        Model whose parameters are updated.
-    train_loader : torch.utils.data.DataLoader
-        Batches of flattened inputs and cell-class targets.
+        Model to update.
+    train_loader : DataLoader
+        Training batches.
     optimizer : torch.optim.Optimizer
-        Optimizer used to update model parameters.
+        Parameter optimizer.
     device : torch.device
-        Device to use for model inputs, targets, and loss computation.
+        Device for computation.
 
     Returns
     -------
     float
-        Arithmetic mean of the batch cross-entropy losses for the epoch.
+        Mean batch loss.
     """
     vision_model.train()
     total_loss = 0
@@ -257,21 +236,21 @@ def val(
     val_loader: DataLoader,
     device: torch.device,
 ) -> float:
-    """Measure reconstruction loss without updating model parameters.
+    """Evaluate the model without updating weights.
 
     Parameters
     ----------
     vision_model : ModelV
         Model to evaluate.
-    val_loader : torch.utils.data.DataLoader
-        Batches of flattened inputs and cell-class targets.
+    val_loader : DataLoader
+        Validation batches.
     device : torch.device
-        Device to use for model inputs, targets, and loss computation.
+        Device for computation.
 
     Returns
     -------
     float
-        Arithmetic mean of the batch cross-entropy losses for validation.
+        Mean validation batch loss.
     """
     vision_model.eval()
 
@@ -294,11 +273,7 @@ def val(
 
 
 def main() -> None:
-    """Train Model V, log losses, and save the best validation checkpoint.
-
-    The function chooses CUDA when available and CPU otherwise, creates the
-    train and validation loaders, and logs each epoch to Weights & Biases.
-    """
+    """Train Model V, log losses, and save the best checkpoint."""
     wandb.init(
         project="World-model-grid",
         name="run-02",
