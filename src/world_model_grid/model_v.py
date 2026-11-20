@@ -1,7 +1,8 @@
 """State reconstruction model and training utilities for Model V."""
 
+import sys
 import numpy as np
-from . import config
+import config
 
 import torch
 import torch.nn as nn
@@ -9,14 +10,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 
 import wandb
-
-
-def quick_test() -> None:
-    """Print one training batch's input and target shapes."""
-    train_loader = get_data_loader("train")
-    batch = next(iter(train_loader))
-    print(batch[0].shape, batch[0].dtype)
-    print(batch[1].shape)
 
 
 class GridDataset(Dataset):
@@ -191,7 +184,7 @@ def train(
     train_loader: DataLoader,
     optimizer: optim.Optimizer,
     device: torch.device,
-) -> float:
+    ) -> float:
     """Train the model for one epoch.
 
     Parameters
@@ -235,7 +228,7 @@ def val(
     vision_model: ModelV,
     val_loader: DataLoader,
     device: torch.device,
-) -> float:
+    ) -> float:
     """Evaluate the model without updating weights.
 
     Parameters
@@ -288,7 +281,6 @@ def main() -> None:
     vision_model = ModelV().to(device)
     optimizer = torch.optim.Adam(vision_model.parameters(), lr=config.LEARNING_RATE)
 
-
     train_loader = get_data_loader("train")
     val_loader = get_data_loader("val")
 
@@ -309,6 +301,65 @@ def main() -> None:
             best_val_loss = avg_val_loss
             torch.save(vision_model.state_dict(), config.MODEL_V_PARAMETERS_PATH)
 
+def val_metrics():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    vision_model = ModelV().to(device)
+    vision_model.load_state_dict(torch.load(config.MODEL_V_PARAMETERS_PATH))
+    vision_model.eval()
+    val_loader = get_data_loader("val")
+
+    with torch.no_grad():
+        total_agent_accuracy = 0
+        total_exact_map = 0
+        total_pred_obs = 0
+        total_true_obs = 0
+        total_correct_pred = 0
+        total_map = 0
+
+        for inputs, targets in val_loader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            predictions = vision_model(inputs).view(-1, 3, 8, 8).argmax(dim=1)
+            agent_accuracy, exact_map, pred_obs, true_obs, correct_pred = count(
+                predictions, targets
+            )
+            total_agent_accuracy += agent_accuracy
+            total_exact_map += exact_map
+            total_pred_obs += pred_obs
+            total_true_obs += true_obs
+            total_correct_pred += correct_pred
+            total_map += inputs.shape[0] 
+
+        agent_accuracy_rate = total_agent_accuracy / total_map
+        exact_map_rate = total_exact_map / total_map
+        obstacle_precision = total_correct_pred / total_pred_obs
+        obstacle_recall = total_correct_pred / total_true_obs
+        obstacles_f1 = 2 * (obstacle_precision * obstacle_recall) / (obstacle_precision + obstacle_recall) 
+
+        metrics = {
+                "agent_accuracy": agent_accuracy_rate,
+                "exact_map": exact_map_rate,
+                "obstacle_precision": obstacle_precision,
+                "obstacle_recall": obstacle_recall,
+                "obstacle_f1": obstacles_f1,
+            }
+        for name, value in metrics.items():
+            print(f"{name}: {value:.4f}")
+
+def count(preds: torch.Tensor, targs: torch.Tensor) -> tuple[int, int, int, int, int]:
+    agent_accuracy = ((preds == 2) == (targs == 2)).all(dim=(1, 2)).sum().item()
+    exact_map = (preds == targs).all(dim=(1, 2)).sum().item()
+
+    pred_obs = (preds == 1).sum().item()
+    true_obs = (targs == 1).sum().item()
+
+    correct_pred = ((preds == 1) & (targs == 1)).sum().item()
+
+    return agent_accuracy, exact_map, pred_obs, true_obs, correct_pred
+
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1] == 'train':
+        main()  
+    elif sys.argv[1] == 'val':
+        val_metrics()
+
