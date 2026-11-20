@@ -20,6 +20,17 @@ Môi trường grid 8×8 nhỏ để học và thử nghiệm world model cho b�
 - `model_v.py` có một autoencoder MLP để học mã hóa và tái tạo trạng thái dạng grid. Phần này mới học tái tạo state độc lập; chưa dự đoán chuyển trạng thái theo action.
 - `model_m.py`, `dream_train.py` và `evaluate.py` hiện chưa được triển khai.
 
+## Lựa chọn thiết kế của Model V
+
+| Lựa chọn | Lý do | Trạng thái |
+| --- | --- | --- |
+| CrossEntropy theo từng ô | Mỗi ô thuộc đúng một trong ba lớp: trống, vật cản hoặc agent. Decoder xuất logits cho ba lớp tại mỗi ô, nên đây là bài toán phân loại đa lớp theo pixel. | Đang dùng trong train và validation. |
+| Class weights nghịch đảo tần suất | `weight_distribution()` đặt trọng số theo tần suất nhãn trong từng batch: lớp ít gặp chịu loss lớn hơn. Trọng số đá không cố định ở 7×; tỷ lệ đá/trống xấp xỉ số ô trống chia số ô đá, nên thay đổi theo batch. Lớp agent còn hiếm hơn và cũng nhận trọng số cao. | Một lần validation ghi nhận obstacle precision 0.7142, recall 0.9695, F1 0.8225 và exact-map 0.0937. Đây là kết quả của một lần chạy; chưa đủ để kết luận class weights là nguyên nhân duy nhất gây dự đoán dư đá. |
+| Latent dimension = 16 | Observation có 3×8×8 = 192 giá trị. Encoder nén qua hidden 64 xuống vector 16 chiều; decoder tái tạo logits từ vector này. Đây là bottleneck thử nghiệm ban đầu. | Chưa so sánh có hệ thống với kích thước latent khác, nên chưa xem 16 là tối ưu. |
+| Adam, learning rate 0.0015, batch size 256, 50 epochs | Cấu hình hiện tại để chạy baseline; loss train/validation được log qua Weights & Biases và checkpoint tốt nhất được chọn theo validation loss. | Các giá trị cần tiếp tục đánh giá trên cùng validation set. |
+
+Model V hiện là autoencoder xác định, chưa phải VAE: code không dự đoán phân phối latent hay dùng KL loss.
+
 ## Luật môi trường
 
 - Lưới có kích thước 8×8, với 5–10 vật cản tĩnh và một agent ở các ô khác nhau.
