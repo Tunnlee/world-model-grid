@@ -5,8 +5,12 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config
-from .env import GridEnv8x8
+if __package__:
+    from . import config
+    from .env import GridEnv8x8
+else:
+    import config
+    from env import GridEnv8x8
 
 
 def main(mode: str) -> None:
@@ -239,5 +243,5 @@ def main(mode: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise SystemExit("Usage: python -m world_model_grid.collect_data {train,val}")
+        raise SystemExit("Usage: python -m world_model_grid.collect_data {train,val} (or python collect_data.py {train,val} from src/world_model_grid)")
     main(sys.argv[1].strip().lower())

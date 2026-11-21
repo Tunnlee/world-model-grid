@@ -38,9 +38,19 @@ uv run pytest
 
 Collector tạo 100.000 episode train hoặc 10.000 episode validation. Trong mỗi split, 70% episode dùng policy ngẫu nhiên; 30% dùng random walk chọn hướng không va chạm ngay ở bước kế tiếp.
 
+Từ thư mục gốc repo:
+
 ```bash
 uv run python -m world_model_grid.collect_data train
 uv run python -m world_model_grid.collect_data val
+```
+
+Hoặc chạy trực tiếp từ `src/world_model_grid`:
+
+```bash
+cd src/world_model_grid
+uv run python collect_data.py train
+uv run python collect_data.py val
 ```
 
 Dataset được lưu tại `data/train_dataset.npz` và `data/val_dataset.npz`. Thư mục `data/` không được commit lên Git. Các episode dài ngắn khác nhau nên được lưu dưới dạng mảng NumPy `dtype=object`; khi nạp cần bật pickle:
@@ -56,27 +66,30 @@ Dataset lưu `states`, `actions`, `rewards`, `next_states` và `terminated`. Col
 
 ## 6. Chạy Model V
 
-Từ thư mục gốc repo, chạy file trực tiếp với một trong các mode mà `sys.argv[1]` hỗ trợ:
+Model V đọc mode từ `sys.argv[1]`. Có thể chạy bằng package mode từ thư mục gốc hoặc chạy trực tiếp từ `src/world_model_grid`.
 
-**Train Model V** — cần có cả dataset train và validation. Lệnh log kết quả lên Weights & Biases và lưu checkpoint tốt nhất theo validation loss tại `weights/model_v_parameters.pth`.
-
-```bash
-uv run python src/world_model_grid/model_v.py train
-```
-
-**Tính metrics trên validation set** — cần checkpoint đã được train.
+**Từ thư mục gốc repo:**
 
 ```bash
-uv run python src/world_model_grid/model_v.py metrics
+uv run python -m world_model_grid.model_v train
+uv run python -m world_model_grid.model_v metrics
+uv run python -m world_model_grid.model_v recon
 ```
 
-**Lưu ảnh so sánh reconstruction** — cần checkpoint và validation dataset; ảnh được lưu tại `results/model_v_recon.png`.
+**Từ thư mục `src/world_model_grid`:**
 
 ```bash
-uv run python src/world_model_grid/model_v.py recon
+cd src/world_model_grid
+uv run python model_v.py train
+uv run python model_v.py metrics
+uv run python model_v.py recon
 ```
 
-CLI hiện nhận `train`, `metrics` và `recon`; `val` không phải mode dòng lệnh (chỉ là tên split được dùng bên trong code). Hãy truyền đúng một mode sau tên file.
+- `train`: cần dataset train và validation; log lên Weights & Biases, lưu checkpoint tốt nhất tại `weights/model_v_parameters.pth`.
+- `metrics`: nạp checkpoint và in metrics trên validation set.
+- `recon`: nạp checkpoint và validation set, lưu ảnh tại `results/model_v_recon.png`.
+
+CLI nhận đúng ba mode `train`, `metrics` và `recon`. `val` là tên split dùng bên trong code, không phải mode CLI.
 
 ## 7. Lựa chọn thiết kế
 

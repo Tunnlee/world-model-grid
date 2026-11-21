@@ -2,7 +2,11 @@
 
 import sys
 import numpy as np
-import config
+
+if __package__:
+    from . import config
+else:
+    import config
 
 import torch
 import torch.nn as nn

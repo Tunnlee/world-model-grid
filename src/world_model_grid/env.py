@@ -1,8 +1,8 @@
 import numpy as np
 
-try:
+if __package__:
     from . import config
-except ImportError:
+else:
     import config
 
 
