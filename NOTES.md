@@ -58,3 +58,10 @@ Ngày 7:
         Run thử vài lần với các learning rate và batch size khác nhau
         Đánh giá kết quả
         Log các thông số vào wandb
+
+Ngày 8:
+    Đã làm:
+        Thu về metric của mô hình sau huấn luyện
+    Nhận thấy:
+        - Mô hình đang bị đoán dư đá, có thể là do class weight của đá trong crossentropyloss khá cao, hoặc là do latent space 16 chiều không đủ để nén hết thông tin của ô đá xuất hiện ngẫu nhiên cả về tần suất và vị trí.
+        - Agent accuracy đã đủ tốt (0.9979)
