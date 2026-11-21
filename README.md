@@ -54,18 +54,42 @@ with np.load("data/train_dataset.npz", allow_pickle=True) as data:
 
 Dataset lưu `states`, `actions`, `rewards`, `next_states` và `terminated`. Collector dùng `truncated` để dừng episode nhưng không lưu cờ này. Toàn bộ split được giữ trong RAM trước khi ghi file.
 
-## 6. Lựa chọn thiết kế
+## 6. Chạy Model V
+
+Từ thư mục gốc repo, chạy file trực tiếp với một trong các mode mà `sys.argv[1]` hỗ trợ:
+
+**Train Model V** — cần có cả dataset train và validation. Lệnh log kết quả lên Weights & Biases và lưu checkpoint tốt nhất theo validation loss tại `weights/model_v_parameters.pth`.
+
+```bash
+uv run python src/world_model_grid/model_v.py train
+```
+
+**Tính metrics trên validation set** — cần checkpoint đã được train.
+
+```bash
+uv run python src/world_model_grid/model_v.py metrics
+```
+
+**Lưu ảnh so sánh reconstruction** — cần checkpoint và validation dataset; ảnh được lưu tại `results/model_v_recon.png`.
+
+```bash
+uv run python src/world_model_grid/model_v.py recon
+```
+
+CLI hiện nhận `train`, `metrics` và `recon`; `val` không phải mode dòng lệnh (chỉ là tên split được dùng bên trong code). Hãy truyền đúng một mode sau tên file.
+
+## 7. Lựa chọn thiết kế
 
 | Lựa chọn | Lý do | Trạng thái |
 | --- | --- | --- |
 | CrossEntropy theo từng ô | Mỗi ô thuộc một trong ba lớp rời rạc: trống, vật cản hoặc agent. Decoder xuất logits cho ba lớp tại mỗi ô, nên CrossEntropy phù hợp với phân loại đa lớp theo ô. | Đang dùng trong train và validation. |
-| Class weight nghịch đảo tần suất | Lớp hiếm chịu loss lớn hơn để giảm bỏ sót vật cản. Trọng số được tính từ tần suất nhãn trong từng batch nên thay đổi theo batch; cách này có thể tăng dự đoán đá giả. | Đang dùng; trade-off được so sánh ở mục 7. |
+| Class weight nghịch đảo tần suất | Lớp hiếm chịu loss lớn hơn để giảm bỏ sót vật cản. Trọng số được tính từ tần suất nhãn trong từng batch nên thay đổi theo batch; cách này có thể tăng dự đoán đá giả. | Đang dùng; trade-off được so sánh ở mục 8. |
 | Latent dimension = 16 | Nén observation 192 giá trị xuống vector 16 chiều, qua hidden layer 64. | Kích thước thử nghiệm ban đầu; chưa có so sánh để kết luận là tối ưu. |
 | Adam, learning rate 0.0015, batch size 256, 50 epochs | Cấu hình baseline hiện tại; checkpoint được chọn theo validation loss. | Cần tiếp tục đánh giá cùng các cấu hình khác. |
 
 Model V là autoencoder xác định, chưa phải VAE và chưa được huấn luyện để dự đoán dynamics.
 
-## 7. Tóm tắt thí nghiệm class weight
+## 8. Tóm tắt thí nghiệm class weight
 
 | Runs | Cách đặt trọng số đá | Kết quả quan sát |
 | --- | --- | --- |
@@ -74,7 +98,7 @@ Model V là autoencoder xác định, chưa phải VAE và chưa được huấn
 
 Hiện tại chọn **không lấy căn bậc hai**: bỏ sót đá thật nguy hiểm hơn dự đoán thừa đá nếu map được dùng để lập kế hoạch sống sót. Bảng, biểu đồ W&B và ảnh reconstruction được ghi chi tiết tại [So sánh class weight của vật cản — Runs 3–6](docs/experiments/obstacle-class-weight-runs-03-06.md).
 
-## 8. Cấu trúc mã nguồn
+## 9. Cấu trúc mã nguồn
 
 - `src/world_model_grid/config.py`: cấu hình môi trường, đường dẫn và siêu tham số.
 - `src/world_model_grid/env.py`: luật môi trường grid.
