@@ -37,7 +37,7 @@ class GridDataset(Dataset):
         super().__init__()
 
         if states.ndim != 4:
-            raise ValueError("States must be a 4D array")
+            raise ValueError("States must be a 4D Tensor")
 
         self.inputs = states.reshape(-1, flatten_dim)  # Shape (N, 192)
         self.targets = states.argmax(axis=1)  # Shape (N, 8, 8)
@@ -52,7 +52,7 @@ class GridDataset(Dataset):
         """
         return self.inputs.shape[0]
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Return one input vector and its cell labels.
 
         Parameters
@@ -119,7 +119,7 @@ class ModelV(nn.Module):
 
 
 def get_data_loader(mode: str) -> DataLoader:
-    """Load a train or validation split.
+    """Load a train or validation Dataloader split.
 
     Parameters
     ----------
@@ -129,7 +129,7 @@ def get_data_loader(mode: str) -> DataLoader:
     Returns
     -------
     DataLoader
-        Batches of flattened states and cell labels.
+        Callable data object for the specified datase.
 
     Raises
     ------
@@ -184,6 +184,8 @@ def train(
     train_loader: DataLoader,
     optimizer: optim.Optimizer,
     device: torch.device,
+    num_channels: int = config.NUM_CHANNELS,
+    grid_size: int = config.GRID_SIZE,
     ) -> float:
     """Train the model for one epoch.
 
@@ -212,7 +214,7 @@ def train(
         optimizer.zero_grad()
 
         logits = vision_model(inputs).view(
-            -1, config.NUM_CHANNELS, config.GRID_SIZE, config.GRID_SIZE
+            -1, num_channels, grid_size, grid_size
         )
 
         loss = criterion(logits, targets)
@@ -228,7 +230,9 @@ def val(
     vision_model: ModelV,
     val_loader: DataLoader,
     device: torch.device,
-    ) -> float:
+    num_channels: int = config.NUM_CHANNELS,
+    grid_size: int = config.GRID_SIZE,
+    ) -> tuple[float, dict]:
     """Evaluate the model without updating weights.
 
     Parameters
@@ -256,13 +260,15 @@ def val(
             )
 
             logits = vision_model(inputs).view(
-                -1, config.NUM_CHANNELS, config.GRID_SIZE, config.GRID_SIZE
+                -1, num_channels, grid_size, grid_size
             )
 
             loss = criterion(logits, targets)
             total_loss += loss.item()
 
-        return total_loss / len(val_loader)
+            metrics = get_metrics("val", vision_model, logits, targets)
+
+        return total_loss / len(val_loader), metrics
 
 
 def main() -> None:
@@ -301,25 +307,49 @@ def main() -> None:
             best_val_loss = avg_val_loss
             torch.save(vision_model.state_dict(), config.MODEL_V_PARAMETERS_PATH)
 
-def val_metrics():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    vision_model = ModelV().to(device)
-    vision_model.load_state_dict(torch.load(config.MODEL_V_PARAMETERS_PATH))
-    vision_model.eval()
-    val_loader = get_data_loader("val")
 
-    with torch.no_grad():
-        total_agent_accuracy = 0
-        total_exact_map = 0
-        total_pred_obs = 0
-        total_true_obs = 0
-        total_correct_pred = 0
-        total_map = 0
+def get_metrics(mode, vision_model: ModelV = None, predictions: torch.Tensor = None, targets: torch.Tensor = None):
+    if mode == 'val':
+        agent_accuracy, exact_map, pred_obs, true_obs, correct_pred = count_metrics(
+            predictions.argmax(dim=1), targets
+        )
+
+        total_map = inputs.shape[0] 
+
+        agent_accuracy_rate = agent_accuracy / total_map
+        exact_map_rate = exact_map / total_map
+        obstacle_precision = correct_pred / pred_obs
+        obstacle_recall = correct_pred / true_obs
+        obstacles_f1 = 2 * (obstacle_precision * obstacle_recall) / (obstacle_precision + obstacle_recall) 
+
+        metrics = {
+                "agent_accuracy": agent_accuracy_rate,
+                "exact_map": exact_map_rate,
+                "obstacle_precision": obstacle_precision,
+                "obstacle_recall": obstacle_recall,
+                "obstacle_f1": obstacles_f1,
+            }
+        return metrics
+    
+    elif mode == 'final':
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        vision_model = ModelV().to(device)
+        vision_model.load_state_dict(torch.load(config.MODEL_V_PARAMETERS_PATH))
+        vision_model.eval()
+        val_loader = get_data_loader("val")
+
+        with torch.no_grad():
+            total_agent_accuracy = 0
+            total_exact_map = 0
+            total_pred_obs = 0
+            total_true_obs = 0
+            total_correct_pred = 0
+            total_map = 0
 
         for inputs, targets in val_loader:
             inputs, targets = inputs.to(device), targets.to(device)
             predictions = vision_model(inputs).view(-1, 3, 8, 8).argmax(dim=1)
-            agent_accuracy, exact_map, pred_obs, true_obs, correct_pred = count(
+            agent_accuracy, exact_map, pred_obs, true_obs, correct_pred = count_metrics(
                 predictions, targets
             )
             total_agent_accuracy += agent_accuracy
@@ -342,10 +372,10 @@ def val_metrics():
                 "obstacle_recall": obstacle_recall,
                 "obstacle_f1": obstacles_f1,
             }
-        for name, value in metrics.items():
-            print(f"{name}: {value:.4f}")
+        return metrics
 
-def count(preds: torch.Tensor, targs: torch.Tensor) -> tuple[int, int, int, int, int]:
+
+def count_metrics(preds: torch.Tensor, targs: torch.Tensor) -> tuple[int, int, int, int, int]:
     agent_accuracy = ((preds == 2) == (targs == 2)).all(dim=(1, 2)).sum().item()
     exact_map = (preds == targs).all(dim=(1, 2)).sum().item()
 
@@ -360,6 +390,8 @@ def count(preds: torch.Tensor, targs: torch.Tensor) -> tuple[int, int, int, int,
 if __name__ == "__main__":
     if sys.argv[1] == 'train':
         main()  
-    elif sys.argv[1] == 'val':
-        val_metrics()
+    elif sys.argv[1] == 'metrics':
+        metrics = get_metrics("final")
+        for metric in metrics.items():
+            print(f'{metric[0]}, {metric[1]}')
 
