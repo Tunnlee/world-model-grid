@@ -11,6 +11,11 @@ from torch.utils.data import DataLoader, Dataset
 
 import wandb
 
+from pathlib import Path
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
+
 
 class GridDataset(Dataset):
     """Flatten observations and create per-cell class labels."""
@@ -180,7 +185,8 @@ def weight_distribution(targets: torch.Tensor) -> torch.Tensor:
 
 
 def count_metrics(
-    preds: torch.Tensor, targs: torch.Tensor) -> tuple[int, int, int, int, int]:
+    preds: torch.Tensor, targs: torch.Tensor
+    ) -> tuple[int, int, int, int, int]:
     agent_accuracy = ((preds == 2) == (targs == 2)).all(dim=(1, 2)).sum().item()
     exact_map = (preds == targs).all(dim=(1, 2)).sum().item()
 
@@ -318,7 +324,7 @@ def main() -> None:
     """Train Model V, log losses, and save the best checkpoint."""
     wandb.init(
         project="World-model-grid",
-        name="run-02",
+        name="run-03",
         config={
             "learning_rate": config.LEARNING_RATE,
             "batch_size": config.BATCH_SIZE,
@@ -341,7 +347,7 @@ def main() -> None:
         print(
             f"Epoch {epoch + 1}/{config.TOTAL_EPOCHS} | "
             f"Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f} | "
-            f"Agent Acc: {val_metrics['agent_accuracy']:.4f} | Exact Map: {val_metrics['exact_map']:.4f}"
+            f"Agent Acc: {val_metrics['agent_accuracy']:.4f} | Exact Map: {val_metrics['exact_map']:.4f} | Obstacle precision: {val_metrics['obstacle_precision']} | Obstacle recall: {val_metrics['obstacle_recall']:.4f} | Obstacle F1: {val_metrics['obstacle_f1']}"
         )
 
         wandb.log(
@@ -372,6 +378,67 @@ def eval_checkpoint() -> dict[str, float]:
     _, metrics = val(vision_model, val_loader, device)
     return metrics
 
+def save_recon_samples(num_samples: int = 6) -> None:
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    vision_model = ModelV().to(device)
+    vision_model.load_state_dict(
+        torch.load(
+            config.MODEL_V_PARAMETERS_PATH,
+            map_location=device,
+            weights_only=True,
+        )
+    )
+    vision_model.eval()
+
+    val_loader = get_data_loader("val")
+    inputs, targets = next(iter(val_loader))
+    inputs, targets = inputs[:num_samples].to(device), targets[:num_samples]
+
+    with torch.no_grad():
+        preds = (
+            vision_model(inputs)
+            .view(-1, config.NUM_CHANNELS, config.GRID_SIZE, config.GRID_SIZE)
+            .argmax(dim=1)
+            .cpu()
+        )
+
+    cmap = ListedColormap(["#F1F5F9", "#1E293B", "#F97316"])
+
+    fig, axes = plt.subplots(2, num_samples, figsize=(2.4 * num_samples, 5.2))
+    for i in range(num_samples):
+        for row, (grid, title) in enumerate(
+            [
+                (targets[i], f"Ground Truth #{i + 1}"),
+                (preds[i], f"Reconstructed #{i + 1}"),
+            ]
+        ):
+            ax = axes[row, i]
+            ax.imshow(grid, cmap=cmap, vmin=0, vmax=2)
+            ax.set_xticks([x - 0.5 for x in range(1, config.GRID_SIZE)], minor=True)
+            ax.set_yticks([y - 0.5 for y in range(1, config.GRID_SIZE)], minor=True)
+            ax.grid(which="minor", color="#CBD5E1", linestyle="-", linewidth=0.8)
+            ax.tick_params(
+                which="both",
+                bottom=False,
+                left=False,
+                labelbottom=False,
+                labelleft=False,
+            )
+            ax.set_title(title, fontsize=10)
+
+    legend_items = [
+        Patch(facecolor="#F1F5F9", edgecolor="#CBD5E1", label="Empty (0)"),
+        Patch(facecolor="#1E293B", label="Obstacle (1)"),
+        Patch(facecolor="#F97316", label="Agent (2)"),
+    ]
+    fig.legend(handles=legend_items, loc="lower center", ncol=3, frameon=False)
+    plt.tight_layout(rect=(0, 0.06, 1, 1))
+
+    plt.savefig(config.MODEL_V_RECON_PATH, dpi=150)
+    plt.close(fig)
+    print(f"Saved reconstruction comparison to: {config.MODEL_V_RECON_PATH}")
+
 
 if __name__ == "__main__":
     if sys.argv[1] == "train":
@@ -380,3 +447,5 @@ if __name__ == "__main__":
         metrics = eval_checkpoint()
         for metric in metrics.items():
             print(f"{metric[0]}, {metric[1]}")
+    elif sys.argv[1] == "recon":
+        save_recon_samples()

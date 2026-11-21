@@ -34,6 +34,8 @@ TRAIN_DATASET_PATH = os.path.join(DATA_DIR, "train_dataset.npz")
 VAL_DATASET_PATH = os.path.join(DATA_DIR, "val_dataset.npz")
 WEIGHT_DIR = os.path.join(PROJECT_ROOT, "weights")
 MODEL_V_PARAMETERS_PATH = os.path.join(WEIGHT_DIR, "model_v_parameters.pth")
+MODEL_V_RECON_PATH = os.path.join(PROJECT_ROOT, "results", "model_v_recon.png")
+
 
 # 5 Collect data
 TOTAL_EPISODES_TRAIN = 100000
@@ -46,3 +48,4 @@ FLATTEN_DIM = GRID_SIZE * GRID_SIZE * NUM_CHANNELS
 HIDDEN_DIM = 64
 LATENT_DIM = 16
 LEARNING_RATE = 0.0015
+NUM_SAMPLES = 6
