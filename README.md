@@ -72,7 +72,7 @@ Model V là autoencoder xác định, chưa phải VAE và chưa được huấn
 | 3–4 | Giữ nguyên, không lấy căn bậc hai | Obstacle recall cao hơn. Run 4 bắt được đá thật trong các mẫu minh họa nhưng sinh thêm đá giả. |
 | 5–6 | Lấy căn bậc hai trọng số đá | Ít đá giả hơn và obstacle F1 nhỉnh hơn một chút, nhưng obstacle recall thấp hơn; Run 6 có mẫu tái tạo sai đá thật. |
 
-Hiện tại chọn **không lấy căn bậc hai**: bỏ sót đá thật nguy hiểm hơn dự đoán thừa đá nếu map được dùng để lập kế hoạch sống sót. Bảng, biểu đồ W&B và ảnh reconstruction được ghi chi tiết tại [So sánh class weight của vật cản — Runs 3–6](docs/experiments/obstacle-class-weight-runs.md).
+Hiện tại chọn **không lấy căn bậc hai**: bỏ sót đá thật nguy hiểm hơn dự đoán thừa đá nếu map được dùng để lập kế hoạch sống sót. Bảng, biểu đồ W&B và ảnh reconstruction được ghi chi tiết tại [So sánh class weight của vật cản — Runs 3–6](docs/experiments/obstacle-class-weight-runs-03-06.md).
 
 ## 8. Cấu trúc mã nguồn
 
