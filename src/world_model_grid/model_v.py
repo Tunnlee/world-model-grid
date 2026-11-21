@@ -179,6 +179,19 @@ def weight_distribution(targets: torch.Tensor) -> torch.Tensor:
     return class_weights
 
 
+def count_metrics(
+    preds: torch.Tensor, targs: torch.Tensor) -> tuple[int, int, int, int, int]:
+    agent_accuracy = ((preds == 2) == (targs == 2)).all(dim=(1, 2)).sum().item()
+    exact_map = (preds == targs).all(dim=(1, 2)).sum().item()
+
+    pred_obs = (preds == 1).sum().item()
+    true_obs = (targs == 1).sum().item()
+
+    correct_pred = ((preds == 1) & (targs == 1)).sum().item()
+
+    return agent_accuracy, exact_map, pred_obs, true_obs, correct_pred
+
+
 def train(
     vision_model: ModelV,
     train_loader: DataLoader,
@@ -213,9 +226,7 @@ def train(
         inputs, targets = inputs.to(device), targets.to(device)
         optimizer.zero_grad()
 
-        logits = vision_model(inputs).view(
-            -1, num_channels, grid_size, grid_size
-        )
+        logits = vision_model(inputs).view(-1, num_channels, grid_size, grid_size)
 
         loss = criterion(logits, targets)
         loss.backward()
@@ -232,7 +243,7 @@ def val(
     device: torch.device,
     num_channels: int = config.NUM_CHANNELS,
     grid_size: int = config.GRID_SIZE,
-    ) -> tuple[float, dict]:
+    ) -> tuple[float, dict[str, float]]:
     """Evaluate the model without updating weights.
 
     Parameters
@@ -251,6 +262,13 @@ def val(
     """
     vision_model.eval()
 
+    total_agent_accuracy = 0
+    total_exact_map = 0
+    total_pred_obs = 0
+    total_true_obs = 0
+    total_correct_pred = 0
+    total_map = 0
+
     with torch.no_grad():
         total_loss = 0
         for inputs, targets in val_loader:
@@ -259,14 +277,39 @@ def val(
                 device
             )
 
-            logits = vision_model(inputs).view(
-                -1, num_channels, grid_size, grid_size
-            )
+            logits = vision_model(inputs).view(-1, num_channels, grid_size, grid_size)
 
             loss = criterion(logits, targets)
             total_loss += loss.item()
 
-            metrics = get_metrics("val", vision_model, logits, targets)
+            agent_accuracy, exact_map, pred_obs, true_obs, correct_pred = count_metrics(
+                logits.argmax(dim=1), targets
+            )
+
+            total_agent_accuracy += agent_accuracy
+            total_exact_map += exact_map
+            total_pred_obs += pred_obs
+            total_true_obs += true_obs
+            total_correct_pred += correct_pred
+            total_map += inputs.shape[0]
+
+        agent_accuracy_rate = total_agent_accuracy / total_map
+        exact_map_rate = total_exact_map / total_map
+        obstacle_precision = total_correct_pred / (total_pred_obs + 1e-8)
+        obstacle_recall = total_correct_pred / (total_true_obs + 1e-8)
+        obstacles_f1 = (
+            2
+            * (obstacle_precision * obstacle_recall)
+            / (obstacle_precision + obstacle_recall)
+        )
+
+        metrics = {
+            "agent_accuracy": agent_accuracy_rate,
+            "exact_map": exact_map_rate,
+            "obstacle_precision": obstacle_precision,
+            "obstacle_recall": obstacle_recall,
+            "obstacle_f1": obstacles_f1,
+        }
 
         return total_loss / len(val_loader), metrics
 
@@ -281,7 +324,7 @@ def main() -> None:
             "batch_size": config.BATCH_SIZE,
             "total_epochs": config.TOTAL_EPOCHS,
         },
-    )
+        )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vision_model = ModelV().to(device)
@@ -293,14 +336,21 @@ def main() -> None:
     best_val_loss = float("inf")
     for epoch in range(config.TOTAL_EPOCHS):
         avg_train_loss = train(vision_model, train_loader, optimizer, device)
-        avg_val_loss = val(vision_model, val_loader, device)
+        avg_val_loss, val_metrics = val(vision_model, val_loader, device)
 
         print(
-            f"Epoch {epoch + 1}/{config.TOTAL_EPOCHS} | Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f}"
+            f"Epoch {epoch + 1}/{config.TOTAL_EPOCHS} | "
+            f"Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f} | "
+            f"Agent Acc: {val_metrics['agent_accuracy']:.4f} | Exact Map: {val_metrics['exact_map']:.4f}"
         )
 
         wandb.log(
-            {"Train_loss": avg_train_loss, "Val_loss": avg_val_loss, "Epoch": epoch + 1}
+            {
+                "Train_loss": avg_train_loss,
+                "Val_loss": avg_val_loss,
+                **val_metrics,
+                "Epoch": epoch + 1,
+            }
         )
 
         if avg_val_loss < best_val_loss:
@@ -308,90 +358,25 @@ def main() -> None:
             torch.save(vision_model.state_dict(), config.MODEL_V_PARAMETERS_PATH)
 
 
-def get_metrics(mode, vision_model: ModelV = None, predictions: torch.Tensor = None, targets: torch.Tensor = None):
-    if mode == 'val':
-        agent_accuracy, exact_map, pred_obs, true_obs, correct_pred = count_metrics(
-            predictions.argmax(dim=1), targets
+def eval_checkpoint() -> dict[str, float]:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    vision_model = ModelV().to(device)
+    vision_model.load_state_dict(
+        torch.load(
+            config.MODEL_V_PARAMETERS_PATH,
+            map_location=device,
+            weights_only=True,
         )
-
-        total_map = inputs.shape[0] 
-
-        agent_accuracy_rate = agent_accuracy / total_map
-        exact_map_rate = exact_map / total_map
-        obstacle_precision = correct_pred / pred_obs
-        obstacle_recall = correct_pred / true_obs
-        obstacles_f1 = 2 * (obstacle_precision * obstacle_recall) / (obstacle_precision + obstacle_recall) 
-
-        metrics = {
-                "agent_accuracy": agent_accuracy_rate,
-                "exact_map": exact_map_rate,
-                "obstacle_precision": obstacle_precision,
-                "obstacle_recall": obstacle_recall,
-                "obstacle_f1": obstacles_f1,
-            }
-        return metrics
-    
-    elif mode == 'final':
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        vision_model = ModelV().to(device)
-        vision_model.load_state_dict(torch.load(config.MODEL_V_PARAMETERS_PATH))
-        vision_model.eval()
-        val_loader = get_data_loader("val")
-
-        with torch.no_grad():
-            total_agent_accuracy = 0
-            total_exact_map = 0
-            total_pred_obs = 0
-            total_true_obs = 0
-            total_correct_pred = 0
-            total_map = 0
-
-        for inputs, targets in val_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            predictions = vision_model(inputs).view(-1, 3, 8, 8).argmax(dim=1)
-            agent_accuracy, exact_map, pred_obs, true_obs, correct_pred = count_metrics(
-                predictions, targets
-            )
-            total_agent_accuracy += agent_accuracy
-            total_exact_map += exact_map
-            total_pred_obs += pred_obs
-            total_true_obs += true_obs
-            total_correct_pred += correct_pred
-            total_map += inputs.shape[0] 
-
-        agent_accuracy_rate = total_agent_accuracy / total_map
-        exact_map_rate = total_exact_map / total_map
-        obstacle_precision = total_correct_pred / total_pred_obs
-        obstacle_recall = total_correct_pred / total_true_obs
-        obstacles_f1 = 2 * (obstacle_precision * obstacle_recall) / (obstacle_precision + obstacle_recall) 
-
-        metrics = {
-                "agent_accuracy": agent_accuracy_rate,
-                "exact_map": exact_map_rate,
-                "obstacle_precision": obstacle_precision,
-                "obstacle_recall": obstacle_recall,
-                "obstacle_f1": obstacles_f1,
-            }
-        return metrics
-
-
-def count_metrics(preds: torch.Tensor, targs: torch.Tensor) -> tuple[int, int, int, int, int]:
-    agent_accuracy = ((preds == 2) == (targs == 2)).all(dim=(1, 2)).sum().item()
-    exact_map = (preds == targs).all(dim=(1, 2)).sum().item()
-
-    pred_obs = (preds == 1).sum().item()
-    true_obs = (targs == 1).sum().item()
-
-    correct_pred = ((preds == 1) & (targs == 1)).sum().item()
-
-    return agent_accuracy, exact_map, pred_obs, true_obs, correct_pred
+        )
+    val_loader = get_data_loader("val")
+    _, metrics = val(vision_model, val_loader, device)
+    return metrics
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == 'train':
-        main()  
-    elif sys.argv[1] == 'metrics':
-        metrics = get_metrics("final")
+    if sys.argv[1] == "train":
+        main()
+    elif sys.argv[1] == "metrics":
+        metrics = eval_checkpoint()
         for metric in metrics.items():
-            print(f'{metric[0]}, {metric[1]}')
-
+            print(f"{metric[0]}, {metric[1]}")
