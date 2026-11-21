@@ -65,3 +65,11 @@ Ngày 8:
     Nhận thấy:
         - Mô hình đang bị đoán dư đá, có thể là do class weight của đá trong crossentropyloss khá cao, hoặc là do latent space 16 chiều không đủ để nén hết thông tin của ô đá xuất hiện ngẫu nhiên cả về tần suất và vị trí.
         - Agent accuracy đã đủ tốt (0.9979)
+
+
+Ngày 8:
+    Đã làm:
+        Phân luồng logic để chạy modelv
+        Thực nghiệm so sánh khi căn bậc hai giá trị class weight
+    Đã học:
+        Cách sử dụng cờ -m và ảnh hưởng đến import module trong python
