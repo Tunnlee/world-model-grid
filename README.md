@@ -31,6 +31,29 @@ Môi trường grid 8×8 nhỏ để học và thử nghiệm world model cho b�
 
 Model V hiện là autoencoder xác định, chưa phải VAE: code không dự đoán phân phối latent hay dùng KL loss.
 
+## Thí nghiệm trọng số vật cản: Runs 3–6
+
+Runs 3–4 giữ nguyên class weight của vật cản; Runs 5–6 dùng căn bậc hai của trọng số này. Nhóm Runs 5–6 sinh ít đá giả hơn và có `obstacle_f1` nhỉnh hơn một chút, nhưng obstacle recall thấp hơn. Nói cách khác, giảm trọng số giúp mô hình thận trọng hơn khi gán một ô trống thành đá, song cũng làm tăng nguy cơ bỏ sót đá thật.
+
+| Nhóm run | Class weight vật cản | Quan sát |
+| --- | --- | --- |
+| Runs 3–4 | Giữ nguyên | Obstacle recall cao. Run 4 trong các ví dụ tái tạo bắt được các đá thật, đồng thời dự đoán một số ô trống thành đá giả. |
+| Runs 5–6 | Lấy căn bậc hai | Ít đá giả hơn và `obstacle_f1` cao hơn nhẹ; Run 6 có ví dụ tái tạo sai hoặc bỏ sót đá thật. |
+
+![Biểu đồ W&B so sánh Runs 3–6](docs/images/wandb-runs-03-06.png)
+
+*Biểu đồ theo epoch của obstacle recall, precision, F1, exact map, agent accuracy, validation loss và train loss.*
+
+Hai ảnh dưới đây so sánh ground truth với reconstruction của Run 6 và Run 4. Đây là các ví dụ minh họa; biểu đồ W&B phía trên thể hiện xu hướng trên validation set.
+
+| Run 6 — class weight vật cản đã lấy căn bậc hai | Run 4 — giữ nguyên class weight vật cản |
+| --- | --- |
+| ![Ground truth và reconstruction của Run 6](docs/images/reconstruction-run-06.png) | ![Ground truth và reconstruction của Run 4](docs/images/reconstruction-run-04.png) |
+
+### Lựa chọn hiện tại
+
+Tôi chọn **giữ nguyên class weight vật cản** (nhóm Runs 3–4), dù nhóm Runs 5–6 ít sinh đá giả hơn và có `obstacle_f1` cao hơn một chút. Với mục tiêu sống sót lâu nhất, bỏ sót đá thật nguy hiểm hơn dự đoán thừa đá: đá giả có thể khiến một bộ lập kế hoạch tương lai né một ô trống, còn bỏ sót đá thật có thể khiến nó chọn hành động va chạm và kết thúc episode. Vì vậy, quyết định hiện tại ưu tiên obstacle recall hơn precision/F1 cao hơn một chút.
+
 ## Luật môi trường
 
 - Lưới có kích thước 8×8, với 5–10 vật cản tĩnh và một agent ở các ô khác nhau.
