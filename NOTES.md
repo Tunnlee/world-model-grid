@@ -73,3 +73,9 @@ Ngày 8:
         Thực nghiệm so sánh khi căn bậc hai giá trị class weight
     Đã học:
         Cách sử dụng cờ -m và ảnh hưởng đến import module trong python
+
+Ngayf 9:
+    Đã làm:
+        Chuyển states và next_states về dạng (16,) sau khi đưa qua encoder của model V
+    Đã học:
+        Cách tổ chức file và cách device hoạt động
