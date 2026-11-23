@@ -127,7 +127,7 @@ class ModelV(nn.Module):
         return x_recon
 
 
-def get_data_loader(mode: str) -> DataLoader:
+def get_data_loader(mode: str, destination: str = "states") -> DataLoader:
     """Load a train or validation Dataloader split.
 
     Parameters
@@ -148,7 +148,7 @@ def get_data_loader(mode: str) -> DataLoader:
     if mode == "train":
         with np.load(config.TRAIN_DATASET_PATH, allow_pickle=True) as train_dataset:
             train_states = torch.from_numpy(
-                np.concatenate(train_dataset["states"], axis=0)
+                np.concatenate(train_dataset[destination], axis=0)
             )
         return DataLoader(
             GridDataset(train_states),
@@ -158,7 +158,9 @@ def get_data_loader(mode: str) -> DataLoader:
 
     if mode == "val":
         with np.load(config.VAL_DATASET_PATH, allow_pickle=True) as val_dataset:
-            val_states = torch.from_numpy(np.concatenate(val_dataset["states"], axis=0))
+            val_states = torch.from_numpy(
+                np.concatenate(val_dataset[destination], axis=0)
+            )
         return DataLoader(
             GridDataset(val_states),
             batch_size=config.BATCH_SIZE,
@@ -190,7 +192,7 @@ def weight_distribution(targets: torch.Tensor) -> torch.Tensor:
 
 def count_metrics(
     preds: torch.Tensor, targs: torch.Tensor
-    ) -> tuple[int, int, int, int, int]:
+) -> tuple[int, int, int, int, int]:
     agent_accuracy = ((preds == 2) == (targs == 2)).all(dim=(1, 2)).sum().item()
     exact_map = (preds == targs).all(dim=(1, 2)).sum().item()
 
@@ -209,7 +211,7 @@ def train(
     device: torch.device,
     num_channels: int = config.NUM_CHANNELS,
     grid_size: int = config.GRID_SIZE,
-    ) -> float:
+) -> float:
     """Train the model for one epoch.
 
     Parameters
@@ -253,7 +255,7 @@ def val(
     device: torch.device,
     num_channels: int = config.NUM_CHANNELS,
     grid_size: int = config.GRID_SIZE,
-    ) -> tuple[float, dict[str, float]]:
+) -> tuple[float, dict[str, float]]:
     """Evaluate the model without updating weights.
 
     Parameters
@@ -334,7 +336,7 @@ def main() -> None:
             "batch_size": config.BATCH_SIZE,
             "total_epochs": config.TOTAL_EPOCHS,
         },
-        )
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vision_model = ModelV().to(device)
@@ -377,10 +379,11 @@ def eval_checkpoint() -> dict[str, float]:
             map_location=device,
             weights_only=True,
         )
-        )
+    )
     val_loader = get_data_loader("val")
     _, metrics = val(vision_model, val_loader, device)
     return metrics
+
 
 def save_recon_samples(num_samples: int = 6) -> None:
 
