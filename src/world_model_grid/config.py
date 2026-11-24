@@ -1,4 +1,5 @@
 import os
+import numpy as np
 
 # 1. 8x8 Grid
 GRID_SIZE = 8
@@ -10,6 +11,7 @@ MAX_OBSTACLES = 10
 MAX_STEPS_PER_EPISODE = 100
 
 # 2. Actions
+NUM_ACTION = 4
 ACTION_UP = 0
 ACTION_DOWN = 1
 ACTION_LEFT = 2
@@ -21,6 +23,9 @@ ACTION_MAP = {
     ACTION_LEFT: (0, -1),
     ACTION_RIGHT: (0, 1),
 }
+ACTION_LOOKUP = np.array(
+    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float32
+)
 
 # 3. Rewards
 REWARD_SAFE_STEP = 1.0
@@ -45,9 +50,15 @@ TOTAL_EPISODES_VAL = 10000
 
 # 6 Model V
 TOTAL_EPOCHS = 50
-BATCH_SIZE = 256
 FLATTEN_DIM = GRID_SIZE * GRID_SIZE * NUM_CHANNELS
-HIDDEN_DIM = 64
+V_HIDDEN_DIM = 64
 LATENT_DIM = 16
 LEARNING_RATE = 0.0015
 NUM_SAMPLES = 6
+
+# 7 Model M
+
+M_HIDDEN_DIM = 128
+
+# 8 Global model Parameters
+BATCH_SIZE = 256
