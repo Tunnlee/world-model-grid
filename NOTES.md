@@ -79,3 +79,16 @@ Ngayf 9:
         Chuyển states và next_states về dạng (16,) sau khi đưa qua encoder của model V
     Đã học:
         Cách tổ chức file và cách device hoạt động
+        Batchnorm và 
+        Sự ra đỏi của GELU và SiLU
+    Câu hỏi:
+        Làm thế nào hình dung cách neural network và non-linear activation hoạt động trong không gian?
+        Cach vẽ hình  🎅
+
+Ngày 10:
+    Đã học:
+        Affine transformation và non-linear trong mạng neuron
+        Các khái niệm về không gian, manifolds
+        Hình dung được cách không gian hành động trong mạng neuron
+
+    

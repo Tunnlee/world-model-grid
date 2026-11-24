@@ -83,7 +83,7 @@ class ModelV(nn.Module):
     def __init__(
         self,
         flatten_dim=config.FLATTEN_DIM,
-        hidden_dim=config.HIDDEN_DIM,
+        hidden_dim=config.V_HIDDEN_DIM,
         latent_dim=config.LATENT_DIM,
     ):
         """Initialize the encoder and decoder.
