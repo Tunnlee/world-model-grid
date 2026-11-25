@@ -2,6 +2,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 
@@ -158,3 +159,129 @@ def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> Data
         batch_size=config.BATCH_SIZE,
         shuffle=allow_shuffle,
     )
+
+
+def compute_loss(
+    pred: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    targ: dict[str, torch.Tensor],
+    pos_weight: torch.Tensor | None = None,
+    weights: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    ) -> tuple[torch.Tensor, dict[str, float]]:
+
+    pred_z, pred_reward, pred_term = pred
+    w_z, w_r, w_t = weights
+
+    loss_s = F.mse_loss(pred_z, targ["next_states"])
+    loss_r = F.mse_loss(pred_reward, targ["rewards"])
+    loss_t = F.binary_cross_entropy_with_logits(
+        pred_term, targ["terminations"], pos_weight=pos_weight
+    )
+
+    total_loss = w_z * loss_s + w_r * loss_r + w_t * loss_t
+    loss_info = {
+        "loss_s": loss_s.item(),
+        "loss_r": loss_r.item(),
+        "loss_t": loss_t.item(),
+    }
+    return total_loss, loss_info
+
+
+def compute_pos_weight(termination):
+    total_steps = termination.shape[0]
+    total_term_steps = termination.sum().clamp(min=1.0)
+    total_safe_steps = total_steps - total_term_steps.clamp(min=1.0)
+    return total_safe_steps / total_term_steps
+
+
+def train(
+    dynamic_model: ModelM,
+    train_loader: DataLoader,
+    optimizer: torch.optim.Adam,
+    device: torch.device,):
+
+    dynamic_model.train()
+    total_loss = 0
+    for inputs, targets in train_loader:
+        inputs, targets = (
+            {k: v.to(device) for k, v in inputs.items()},
+            {k: v.to(device) for k, v in targets.items()},
+        )
+        optimizer.zero_grad()
+        prediction = dynamic_model(*inputs.values())
+
+        pos_weight = compute_pos_weight(targets["terminations"])
+        train_loss, loss_info = compute_loss(prediction, targets, pos_weight=pos_weight)
+
+        total_loss += train_loss.item()
+        train_loss.backward()
+        optimizer.step()
+
+    return total_loss / len(train_loader)
+
+
+def val(dynamic_model: ModelM, val_loader: DataLoader, device: torch.device):
+
+    dynamic_model.eval()
+    total_loss = 0
+
+    for inputs, targets in val_loader:
+        with torch.no_grad():
+            inputs, targets = (
+                {k: v.to(device) for k, v in inputs.items()},
+                {k: v.to(device) for k, v in targets.items()},
+            )
+            prediction = dynamic_model(*inputs.values())
+
+            pos_weight = compute_pos_weight(targets["terminations"])
+            val_loss, loss_info = compute_loss(
+                prediction, targets, pos_weight=pos_weight
+            )
+
+            total_loss += val_loss.item()
+
+    return total_loss / len(val_loader)
+
+
+def main():
+    wandb.init(
+        project="World-model-grid-model-m",
+        name="test-run",
+        config={
+            "learning_rate": config.LEARNING_RATE,
+            "batch_size": config.BATCH_SIZE,
+            "total_epochs": config.TOTAL_EPOCHS,
+        },
+    )
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dynamic_model = ModelM().to(device)
+    optimizer = torch.optim.Adam(dynamic_model.parameters(), lr=config.LEARNING_RATE)
+
+    train_loader = get_data_loader("train")
+    val_loader = get_data_loader("val")
+
+    best_val_loss = float("inf")
+
+    for epoch in range(config.TOTAL_EPOCHS):
+        avg_train_loss = train(dynamic_model, train_loader, optimizer, device)
+        avg_val_loss = val(dynamic_model, val_loader, device)
+
+        print(
+            f"Epoch {epoch + 1}/{config.TOTAL_EPOCHS} | "
+            f"Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f}"
+        )
+
+        wandb.log(
+            {
+                "Train_loss": avg_train_loss,
+                "Val_loss": avg_val_loss,
+                "Epoch": epoch + 1,
+            }
+        )
+
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            torch.save(dynamic_model.state_dict(), config.MODEL_M_PARAMETERS_PATH)
+
+    wandb.save(config.MODEL_M_PARAMETERS_PATH)
+    wandb.finish()
