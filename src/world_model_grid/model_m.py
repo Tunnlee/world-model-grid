@@ -15,11 +15,13 @@ class LinearDataset(Dataset):
     def __init__(self, dataset: dict):
         super().__init__()
 
-        self.states = torch.from_numpy(dataset["states"])
-        self.actions = torch.from_numpy(dataset["actions"])
-        self.next_states = torch.from_numpy(dataset["next_states"])
-        self.rewards = torch.from_numpy(dataset["rewards"])
-        self.terminations = torch.from_numpy(dataset["terminations"].astype(np.float32))
+        self.states = torch.from_numpy(dataset["states"])  # (Step,16)
+        self.actions = torch.from_numpy(dataset["actions"])  # (Step,4)
+        self.next_states = torch.from_numpy(dataset["next_states"])  # (Step,16)
+        self.rewards = torch.from_numpy(dataset["rewards"])  # (Step,1)
+        self.terminations = torch.from_numpy(
+            dataset["terminations"].astype(np.float32)
+        )  # (Step,1)
 
     def __len__(self) -> int:
         return self.rewards.shape[0]
@@ -29,13 +31,13 @@ class LinearDataset(Dataset):
     ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
         return (
             {
-                "states": self.states[idx],
-                "actions": self.actions[idx],
+                "states": self.states[idx],  # (B,16)
+                "actions": self.actions[idx],  # (B,4)
             },
             {
-                "next_states": self.next_states[idx],
-                "rewards": self.rewards[idx],
-                "terminations": self.terminations[idx],
+                "next_states": self.next_states[idx],  # (B,16)
+                "rewards": self.rewards[idx],  # (B,1)
+                "terminations": self.terminations[idx],  # (B,1)
             },
         )
 
@@ -54,11 +56,13 @@ class RolloutDataset(Dataset):
             if s.shape[0] >= horizon:
                 self.trajectories.append(
                     {
-                        "initial_state": torch.from_numpy(s[0]),
-                        "actions": torch.from_numpy(a[:horizon, :]),
-                        "next_states": torch.from_numpy(n_s[:horizon, :]),
-                        "rewards": torch.from_numpy(r[:horizon, :]),
-                        "terminations": torch.from_numpy(t[:horizon, :].astype(np.float32)),
+                        "initial_state": torch.from_numpy(s[0]),  # (16,)
+                        "actions": torch.from_numpy(a[:horizon, :]),  # (H,4)
+                        "next_states": torch.from_numpy(n_s[:horizon, :]),  # (H,16)
+                        "rewards": torch.from_numpy(r[:horizon, :]),  # (H,1)
+                        "terminations": torch.from_numpy(
+                            t[:horizon, :].astype(np.float32)
+                        ),  # (H,1)
                     }
                 )
 
@@ -66,14 +70,17 @@ class RolloutDataset(Dataset):
         return len(self.trajectories)
 
     def __getitem__(self, idx: int):
-        return {
-            "initial_state": self.trajectories[idx]["initial_state"],
-            "actions": self.trajectories[idx]["actions"],
-        }, {
+        return (
+            {
+                "initial_state": self.trajectories[idx]["initial_state"],
+                "actions": self.trajectories[idx]["actions"],
+            },
+        )  # (B, H, 16) and (B,H,4)
+        {
             "next_states": self.trajectories[idx]["next_states"],
             "rewards": self.trajectories[idx]["rewards"],
             "terminations": self.trajectories[idx]["terminations"],
-        }
+        }  # (B, H, 16) and (B,H,16) and (B,H,1)
 
 
 class ModelM(nn.Module):
@@ -128,15 +135,21 @@ def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> Data
     action_one_hot = [config.ACTION_LOOKUP[action.reshape(-1)] for action in actions]
 
     transformed_dataset = {
-        "states": states if rollout else np.concatenate(states, axis=0),
+        "states": states
+        if rollout
+        else np.concatenate(states, axis=0),  # (Total_episodes,) or (Steps, 16)
         "actions": np.array(action_one_hot, dtype=object)
         if rollout
-        else np.concatenate(action_one_hot, axis=0),
-        "next_states": next_states if rollout else np.concatenate(next_states, axis=0),
-        "rewards": rewards if rollout else np.concatenate(rewards, axis=0),
+        else np.concatenate(action_one_hot, axis=0),  # (Total_episodes,) or (Steps, 4)
+        "next_states": next_states
+        if rollout
+        else np.concatenate(next_states, axis=0),  # (Total_episodes,) or (Steps, 16)
+        "rewards": rewards
+        if rollout
+        else np.concatenate(rewards, axis=0),  # (Total_episodes,) or (Steps, 1)
         "terminations": terminations
         if rollout
-        else np.concatenate(terminations, axis=0),
+        else np.concatenate(terminations, axis=0),  # (Total_episodes,) or (Steps, 1)
     }
     return DataLoader(
         RolloutDataset(transformed_dataset, horizon)

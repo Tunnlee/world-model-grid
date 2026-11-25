@@ -74,7 +74,10 @@ class GridDataset(Dataset):
         tuple of torch.Tensor
             Flattened input and (height, width) target.
         """
-        return self.inputs[idx], self.targets[idx]
+        return (
+            self.inputs[idx],  # (B, 192)
+            self.targets[idx],
+        )  # (B, 8, 8)
 
 
 class ModelV(nn.Module):
@@ -146,28 +149,23 @@ def get_data_loader(mode: str, destination: str = "states") -> DataLoader:
         If mode is unsupported.
     """
     if mode == "train":
-        with np.load(config.TRAIN_DATASET_PATH, allow_pickle=True) as train_dataset:
-            train_states = torch.from_numpy(
-                np.concatenate(train_dataset[destination], axis=0)
-            )
-        return DataLoader(
-            GridDataset(train_states),
-            batch_size=config.BATCH_SIZE,
-            shuffle=True,
-        )
+        file_path = config.TRAIN_DATASET_PATH
+        allow_shuffle = True
+    elif mode == "val":
+        file_path = config.VAL_DATASET_PATH
+        allow_shuffle = False
+    else:
+        raise ValueError("mode must be either 'train' or 'val'")
 
-    if mode == "val":
-        with np.load(config.VAL_DATASET_PATH, allow_pickle=True) as val_dataset:
-            val_states = torch.from_numpy(
-                np.concatenate(val_dataset[destination], axis=0)
-            )
-        return DataLoader(
-            GridDataset(val_states),
-            batch_size=config.BATCH_SIZE,
-            shuffle=False,
-        )
-
-    raise ValueError("mode must be either 'train' or 'val'")
+    with np.load(file_path, allow_pickle=True) as dataset:
+        states = torch.from_numpy(
+            np.concatenate(dataset[destination], axis=0)
+        )  # (Steps,3,8,8)
+    return DataLoader(
+        GridDataset(states),
+        batch_size=config.BATCH_SIZE,
+        shuffle=allow_shuffle,
+    )
 
 
 def weight_distribution(targets: torch.Tensor) -> torch.Tensor:
@@ -312,7 +310,7 @@ def val(
         obstacles_f1 = (
             2
             * (obstacle_precision * obstacle_recall)
-            / (obstacle_precision + obstacle_recall)
+            / (obstacle_precision + obstacle_recall + 1e-8)
         )
 
         metrics = {
@@ -368,6 +366,8 @@ def main() -> None:
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(vision_model.state_dict(), config.MODEL_V_PARAMETERS_PATH)
+    wandb.save(config.MODEL_V_PARAMETERS_PATH)
+    wandb.finish()
 
 
 def eval_checkpoint() -> dict[str, float]:
