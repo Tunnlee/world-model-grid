@@ -11,7 +11,7 @@ else:
     import config
 
 
-class PredDataset(Dataset):
+class LinearDataset(Dataset):
     def __init__(self, dataset):
         super().__init__()
 

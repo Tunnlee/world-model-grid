@@ -89,6 +89,8 @@ Ngày 10:
     Đã học:
         Affine transformation và non-linear trong mạng neuron
         Các khái niệm về không gian, manifolds
-        Hình dung được cách không gian hành động trong mạng neuron
-
-    
+        Hình dung được cách không gian bị tác động trong mạng neuron
+    Đã làm:
+        Code class PredDataset và ModelM
+    Hướng đi
+        Học thêm về fancy indexing
