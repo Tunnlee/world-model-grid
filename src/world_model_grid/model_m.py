@@ -11,6 +11,7 @@ if __package__:
 else:
     import config
 
+import wandb
 
 class LinearDataset(Dataset):
     def __init__(self, dataset: dict):
@@ -19,10 +20,10 @@ class LinearDataset(Dataset):
         self.states = torch.from_numpy(dataset["states"])  # (Step,16)
         self.actions = torch.from_numpy(dataset["actions"])  # (Step,4)
         self.next_states = torch.from_numpy(dataset["next_states"])  # (Step,16)
-        self.rewards = torch.from_numpy(dataset["rewards"])  # (Step,1)
+        self.rewards = torch.from_numpy(dataset["rewards"]).reshape(-1,1)  # (Step,1)
         self.terminations = torch.from_numpy(
             dataset["terminations"].astype(np.float32)
-        )  # (Step,1)
+        ).reshape(-1,1)  # (Step,1)
 
     def __len__(self) -> int:
         return self.rewards.shape[0]
@@ -60,10 +61,10 @@ class RolloutDataset(Dataset):
                         "initial_state": torch.from_numpy(s[0]),  # (16,)
                         "actions": torch.from_numpy(a[:horizon, :]),  # (H,4)
                         "next_states": torch.from_numpy(n_s[:horizon, :]),  # (H,16)
-                        "rewards": torch.from_numpy(r[:horizon, :]),  # (H,1)
+                        "rewards": torch.from_numpy(r[:horizon, :]).reshape(-1,1),  # (H,1)
                         "terminations": torch.from_numpy(
                             t[:horizon, :].astype(np.float32)
-                        ),  # (H,1)
+                        ).reshape(-1,1),  # (H,1)
                     }
                 )
 
@@ -76,7 +77,7 @@ class RolloutDataset(Dataset):
                 "initial_state": self.trajectories[idx]["initial_state"],
                 "actions": self.trajectories[idx]["actions"],
             },
-        )  # (B, H, 16) and (B,H,4)
+        )  # (B,16) and (B,H,4)
         {
             "next_states": self.trajectories[idx]["next_states"],
             "rewards": self.trajectories[idx]["rewards"],
@@ -131,7 +132,7 @@ def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> Data
         actions = dataset["actions"]
         next_states = dataset["next_states"]
         rewards = dataset["rewards"]
-        terminations = dataset["terminations"]
+        terminations = dataset["terminated"]
 
     action_one_hot = [config.ACTION_LOOKUP[action.reshape(-1)] for action in actions]
 
@@ -285,3 +286,6 @@ def main():
 
     wandb.save(config.MODEL_M_PARAMETERS_PATH)
     wandb.finish()
+
+if __name__ == "__main__":
+    main()
