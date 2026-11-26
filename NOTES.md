@@ -79,7 +79,7 @@ Ngayf 9:
         Chuyển states và next_states về dạng (16,) sau khi đưa qua encoder của model V
     Đã học:
         Cách tổ chức file và cách device hoạt động
-        Batchnorm và 
+        Batchnorm và LayerNorm 
         Sự ra đỏi của GELU và SiLU
     Câu hỏi:
         Làm thế nào hình dung cách neural network và non-linear activation hoạt động trong không gian?
@@ -94,3 +94,15 @@ Ngày 10:
         Code class PredDataset và ModelM
     Hướng đi
         Học thêm về fancy indexing
+
+Ngày 11:
+    Đã học:
+        Cách hoạt động của BCEWithLogitsLoss
+        Cách quản lý chiều của Tensor
+    Đã làm:
+        Code các hàm train, val, main, comput_loss và comput_pos_weight
+        Rút ngắn logic của một số hàm
+    Rút ra:
+        Mạng neural sử dụng affine transformation và non-inear activation để tìm ra quy luật của dữ liệu.
+    Hướng đi:
+        Giảm thời gian train model

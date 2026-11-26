@@ -134,7 +134,7 @@ def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> Data
         rewards = dataset["rewards"]
         terminations = dataset["terminated"]
 
-    action_one_hot = [config.ACTION_LOOKUP[action.reshape(-1)] for action in actions]
+    action_one_hot = [config.ACTION_LOOKUP[action.reshape(-1)] for action in actions] #(Episodes, steps, 4)
 
     transformed_dataset = {
         "states": states
@@ -148,10 +148,10 @@ def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> Data
         else np.concatenate(next_states, axis=0),  # (Total_episodes,) or (Steps, 16)
         "rewards": rewards
         if rollout
-        else np.concatenate(rewards, axis=0),  # (Total_episodes,) or (Steps, 1)
+        else np.concatenate(rewards, axis=0),  # (Total_episodes,) or (Steps,)
         "terminations": terminations
         if rollout
-        else np.concatenate(terminations, axis=0),  # (Total_episodes,) or (Steps, 1)
+        else np.concatenate(terminations, axis=0),  # (Total_episodes,) or (Steps,)
     }
     return DataLoader(
         RolloutDataset(transformed_dataset, horizon)

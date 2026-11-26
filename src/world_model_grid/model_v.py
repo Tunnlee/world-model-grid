@@ -332,7 +332,7 @@ def main() -> None:
         config={
             "learning_rate": config.LEARNING_RATE,
             "batch_size": config.BATCH_SIZE,
-            "total_epochs": config.TOTAL_EPOCHS,
+            "total_epochs": config.V_TOTAL_EPOCHS,
         },
     )
 
@@ -344,12 +344,12 @@ def main() -> None:
     val_loader = get_data_loader("val")
 
     best_val_loss = float("inf")
-    for epoch in range(config.TOTAL_EPOCHS):
+    for epoch in range(config.V_TOTAL_EPOCHS):
         avg_train_loss = train(vision_model, train_loader, optimizer, device)
         avg_val_loss, val_metrics = val(vision_model, val_loader, device)
 
         print(
-            f"Epoch {epoch + 1}/{config.TOTAL_EPOCHS} | "
+            f"Epoch {epoch + 1}/{config.V_TOTAL_EPOCHS} | "
             f"Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f} | "
             f"Agent Acc: {val_metrics['agent_accuracy']:.4f} | Exact Map: {val_metrics['exact_map']:.4f} | Obstacle precision: {val_metrics['obstacle_precision']} | Obstacle recall: {val_metrics['obstacle_recall']:.4f} | Obstacle F1: {val_metrics['obstacle_f1']}"
         )
