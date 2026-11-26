@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 
+from collections import defaultdict
+
 if __package__:
     from . import config
 else:
@@ -130,6 +132,85 @@ class ModelM(nn.Module):
         next_z = z + delta_z
         return next_z, reward, termination
 
+class MetricTracker():
+    def __init__(self, device: torch.device):
+        self.device = device
+        self.reset()
+    
+    def reset(self):
+        self._sums = defaultdict(
+            lambda: torch.zeros((), device=self.device, dtype=torch.float64)
+        )
+        self._counts = defaultdict(
+            lambda: torch.zeros((), device=self.device, dtype=torch.int64)
+        )
+    
+    def add_weighted(self, key, batch_mean, count):
+        self._sums[key] += batch_mean.detach() * count
+        self._counts[key] += count
+    
+    def add_raw(self, key, value_tensor):
+        self._sums[key] += value_tensor.detach()
+
+    @torch.no_grad()
+    def update(
+        self,
+        current_z: torch.Tensor,
+        preds: tuple[torch.Tensor, torch.Tensor,torch.Tensor],
+        targs: dict[str, torch.Tensor]
+    ):
+        pred_next_z, pred_r, pred_t = preds
+        targ_next_z, targ_r, targ_t = targs.values()
+        batch_size = torch.tensor(pred_next_z.shape[0], device=self.device, dtype=torch.int64)
+
+        pred_r = pred_r.view(-1)
+        pred_t = pred_t.view(-1)
+        targ_r = targ_r.view(-1)
+        targ_t = targ_t.view(-1)
+
+        #State metrics
+        step_mse = F.mse_loss(pred_next_z, targ_next_z)
+        copy_mse = F.mse_loss(current_z, targ_next_z)
+        move_mask = (targ_t == 0)
+        self.add_weighted("state/step_mse", step_mse, batch_size)
+        self.add_weighted("state/copy_mse", copy_mse, batch_size)
+
+        move_count = move_mask.sum()
+        if move_count > 0:
+            delta_cos_sim = F.cosine_similarity(pred_next_z[move_mask] - current_z[move_mask], targ_next_z[move_mask] - current_z[move_mask], dim=1).mean()
+            self.add_weighted("state/delta_cos_sim", delta_cos_sim, move_count)
+
+        #Reward netrics
+        safe_mask = (targ_r == config.REWARD_SAFE_STEP)
+        safe_count = safe_mask.sum()
+        if safe_count > 0:
+            safe_mae = torch.abs(pred_r[safe_mask] - targ_r[safe_mask]).mean()
+            self.add_weighted("reward/safe_mae", safe_mae, safe_count)
+
+        term_mask = targ_r == config.REWARD_COLLISION
+        term_count = term_mask.sum()
+        if term_count > 0:
+            term_mae = torch.abs(pred_r[term_mask] - targ_r[term_mask]).mean()
+            self.add_weighted("reward/term_mae", term_mae, term_count)
+
+
+        #Termination metrics
+        pred_mask = pred_t > 0.0  
+        true_mask = targ_t == 1.0 
+
+        total_true_term = true_mask.sum()
+        total_pred_term = pred_mask.sum()
+        total_correct_pred = (true_mask & pred_mask).sum()
+
+        self.add_raw("termination/total_true_term", total_true_term)
+        self.add_raw("termination/total_pred_term", total_pred_term)
+        self.add_raw("termination/total_correct_pred", total_correct_pred)
+        
+
+
+
+
+
 
 def get_data_loader(mode: str, device: torch.device, rollout: bool = False, horizon: int = 10) -> DataLoader:
     if mode == "train":
@@ -183,7 +264,7 @@ def compute_loss(
     targ: dict[str, torch.Tensor],
     pos_weight: torch.Tensor | None = None,
     weights: tuple[float, float, float] = (1.0, 1.0, 1.0),
-) -> torch.Tensor:
+    ) -> torch.Tensor:
 
     pred_z, pred_reward, pred_term = pred
     w_z, w_r, w_t = weights
@@ -210,8 +291,7 @@ def train(
     dynamic_model: ModelM,
     train_loader: DataLoader,
     optimizer: torch.optim.Adam,
-    device: torch.device,
-):
+    device: torch.device,):
 
     dynamic_model.train()
     total_loss = torch.zeros(1, device=device)
