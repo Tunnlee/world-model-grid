@@ -13,17 +13,28 @@ else:
 
 import wandb
 
-class LinearDataset(Dataset):
-    def __init__(self, dataset: dict):
-        super().__init__()
 
+class LinearDataset(Dataset):
+    def __init__(self, dataset: dict, device: torch.device):
+        super().__init__()
         self.states = torch.from_numpy(dataset["states"])  # (Step,16)
         self.actions = torch.from_numpy(dataset["actions"])  # (Step,4)
         self.next_states = torch.from_numpy(dataset["next_states"])  # (Step,16)
-        self.rewards = torch.from_numpy(dataset["rewards"]).reshape(-1,1)  # (Step,1)
+        self.rewards = torch.from_numpy(dataset["rewards"]).reshape(-1, 1)  # (Step,1)
         self.terminations = torch.from_numpy(
             dataset["terminations"].astype(np.float32)
-        ).reshape(-1,1)  # (Step,1)
+        ).reshape(-1, 1)  # (Step,1)
+
+        if device is not None and device.type == "cuda":
+            tensors = [self.states, self.actions, self.next_states, self.rewards, self.terminations]
+            total_bytes = sum(t.element_size() * t.nelement() for t in tensors)
+            free_bytes, _ = torch.cuda.mem_get_info(device)
+            if total_bytes < free_bytes * 0.5:
+                self.states = self.states.to(device)
+                self.actions = self.actions.to(device)
+                self.next_states = self.next_states.to(device)
+                self.rewards = self.rewards.to(device)
+                self.terminations = self.terminations.to(device)
 
     def __len__(self) -> int:
         return self.rewards.shape[0]
@@ -61,10 +72,12 @@ class RolloutDataset(Dataset):
                         "initial_state": torch.from_numpy(s[0]),  # (16,)
                         "actions": torch.from_numpy(a[:horizon, :]),  # (H,4)
                         "next_states": torch.from_numpy(n_s[:horizon, :]),  # (H,16)
-                        "rewards": torch.from_numpy(r[:horizon, :]).reshape(-1,1),  # (H,1)
+                        "rewards": torch.from_numpy(r[:horizon, :]).reshape(
+                            -1, 1
+                        ),  # (H,1)
                         "terminations": torch.from_numpy(
                             t[:horizon, :].astype(np.float32)
-                        ).reshape(-1,1),  # (H,1)
+                        ).reshape(-1, 1),  # (H,1)
                     }
                 )
 
@@ -77,12 +90,13 @@ class RolloutDataset(Dataset):
                 "initial_state": self.trajectories[idx]["initial_state"],
                 "actions": self.trajectories[idx]["actions"],
             },
-        )  # (B,16) and (B,H,4)
+          # (B,16) and (B,H,4)
         {
             "next_states": self.trajectories[idx]["next_states"],
             "rewards": self.trajectories[idx]["rewards"],
             "terminations": self.trajectories[idx]["terminations"],
         }  # (B, H, 16) and (B,H,16) and (B,H,1)
+        )
 
 
 class ModelM(nn.Module):
@@ -117,7 +131,7 @@ class ModelM(nn.Module):
         return next_z, reward, termination
 
 
-def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> DataLoader:
+def get_data_loader(mode: str, device: torch.device, rollout: bool = False, horizon: int = 10) -> DataLoader:
     if mode == "train":
         dataset_path = config.ENCODED_TRAIN_DATASET_PATH
         allow_shuffle = True
@@ -134,7 +148,9 @@ def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> Data
         rewards = dataset["rewards"]
         terminations = dataset["terminated"]
 
-    action_one_hot = [config.ACTION_LOOKUP[action.reshape(-1)] for action in actions] #(Episodes, steps, 4)
+    action_one_hot = [
+        config.ACTION_LOOKUP[action.reshape(-1)] for action in actions
+    ]  # (Episodes, steps, 4)
 
     transformed_dataset = {
         "states": states
@@ -154,10 +170,10 @@ def get_data_loader(mode: str, rollout: bool = False, horizon: int = 10) -> Data
         else np.concatenate(terminations, axis=0),  # (Total_episodes,) or (Steps,)
     }
     return DataLoader(
-        RolloutDataset(transformed_dataset, horizon)
+        RolloutDataset(transformed_dataset, horizon, device=device)
         if rollout
-        else LinearDataset(transformed_dataset),
-        batch_size=config.BATCH_SIZE,
+        else LinearDataset(transformed_dataset, device=device),
+        batch_size=config.M_BATCH_SIZE,
         shuffle=allow_shuffle,
     )
 
@@ -167,7 +183,7 @@ def compute_loss(
     targ: dict[str, torch.Tensor],
     pos_weight: torch.Tensor | None = None,
     weights: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    ) -> tuple[torch.Tensor, dict[str, float]]:
+) -> torch.Tensor:
 
     pred_z, pred_reward, pred_term = pred
     w_z, w_r, w_t = weights
@@ -179,12 +195,8 @@ def compute_loss(
     )
 
     total_loss = w_z * loss_s + w_r * loss_r + w_t * loss_t
-    loss_info = {
-        "loss_s": loss_s.item(),
-        "loss_r": loss_r.item(),
-        "loss_t": loss_t.item(),
-    }
-    return total_loss, loss_info
+
+    return total_loss
 
 
 def compute_pos_weight(termination):
@@ -198,10 +210,11 @@ def train(
     dynamic_model: ModelM,
     train_loader: DataLoader,
     optimizer: torch.optim.Adam,
-    device: torch.device,):
+    device: torch.device,
+):
 
     dynamic_model.train()
-    total_loss = 0
+    total_loss = torch.zeros(1, device=device)
     for inputs, targets in train_loader:
         inputs, targets = (
             {k: v.to(device) for k, v in inputs.items()},
@@ -211,19 +224,19 @@ def train(
         prediction = dynamic_model(*inputs.values())
 
         pos_weight = compute_pos_weight(targets["terminations"])
-        train_loss, loss_info = compute_loss(prediction, targets, pos_weight=pos_weight)
+        train_loss = compute_loss(prediction, targets, pos_weight=pos_weight)
 
-        total_loss += train_loss.item()
+        total_loss += train_loss.detach()
         train_loss.backward()
         optimizer.step()
 
-    return total_loss / len(train_loader)
+    return total_loss.item() / len(train_loader)
 
 
 def val(dynamic_model: ModelM, val_loader: DataLoader, device: torch.device):
 
     dynamic_model.eval()
-    total_loss = 0
+    total_loss = torch.zeros(1, device=device)
 
     for inputs, targets in val_loader:
         with torch.no_grad():
@@ -234,41 +247,41 @@ def val(dynamic_model: ModelM, val_loader: DataLoader, device: torch.device):
             prediction = dynamic_model(*inputs.values())
 
             pos_weight = compute_pos_weight(targets["terminations"])
-            val_loss, loss_info = compute_loss(
+            val_loss = compute_loss(
                 prediction, targets, pos_weight=pos_weight
             )
 
-            total_loss += val_loss.item()
+            total_loss += val_loss.detach()
 
-    return total_loss / len(val_loader)
+    return total_loss.item() / len(val_loader)
 
 
 def main():
     wandb.init(
         project="World-model-grid-model-m",
-        name="test-run",
+        name="test-run-01",
         config={
-            "learning_rate": config.LEARNING_RATE,
-            "batch_size": config.BATCH_SIZE,
-            "total_epochs": config.TOTAL_EPOCHS,
+            "learning_rate": config.M_LEARNING_RATE,
+            "batch_size": config.M_BATCH_SIZE,
+            "total_epochs": config.M_TOTAL_EPOCHS,
         },
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dynamic_model = ModelM().to(device)
-    optimizer = torch.optim.Adam(dynamic_model.parameters(), lr=config.LEARNING_RATE)
+    optimizer = torch.optim.Adam(dynamic_model.parameters(), lr=config.M_LEARNING_RATE)
 
-    train_loader = get_data_loader("train")
-    val_loader = get_data_loader("val")
+    train_loader = get_data_loader("train", device=device)
+    val_loader = get_data_loader("val", device=device)
 
     best_val_loss = float("inf")
 
-    for epoch in range(config.TOTAL_EPOCHS):
+    for epoch in range(config.M_TOTAL_EPOCHS):
         avg_train_loss = train(dynamic_model, train_loader, optimizer, device)
         avg_val_loss = val(dynamic_model, val_loader, device)
 
         print(
-            f"Epoch {epoch + 1}/{config.TOTAL_EPOCHS} | "
+            f"Epoch {epoch + 1}/{config.M_TOTAL_EPOCHS} | "
             f"Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f}"
         )
 
@@ -286,6 +299,7 @@ def main():
 
     wandb.save(config.MODEL_M_PARAMETERS_PATH)
     wandb.finish()
+
 
 if __name__ == "__main__":
     main()

@@ -132,7 +132,7 @@ def collect(mode: str) -> None:
 
     np.savez(
         destination,
-        states=np.array([ep["states"] for ep in dataset], dtype=object), 
+        states=np.array([ep["states"] for ep in dataset], dtype=object),
         actions=np.array([ep["actions"] for ep in dataset], dtype=object),
         rewards=np.array([ep["rewards"] for ep in dataset], dtype=object),
         next_states=np.array([ep["next_states"] for ep in dataset], dtype=object),
