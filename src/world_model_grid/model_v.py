@@ -163,7 +163,7 @@ def get_data_loader(mode: str, destination: str = "states") -> DataLoader:
         )  # (Steps,3,8,8)
     return DataLoader(
         GridDataset(states),
-        batch_size=config.BATCH_SIZE,
+        batch_size=config.V_BATCH_SIZE,
         shuffle=allow_shuffle,
     )
 
@@ -190,7 +190,7 @@ def weight_distribution(targets: torch.Tensor) -> torch.Tensor:
 
 def count_metrics(
     preds: torch.Tensor, targs: torch.Tensor
-) -> tuple[int, int, int, int, int]:
+    ) -> tuple[int, int, int, int, int]:
     agent_accuracy = ((preds == 2) == (targs == 2)).all(dim=(1, 2)).sum().item()
     exact_map = (preds == targs).all(dim=(1, 2)).sum().item()
 
@@ -209,7 +209,7 @@ def train(
     device: torch.device,
     num_channels: int = config.NUM_CHANNELS,
     grid_size: int = config.GRID_SIZE,
-) -> float:
+    ) -> float:
     """Train the model for one epoch.
 
     Parameters
@@ -253,7 +253,7 @@ def val(
     device: torch.device,
     num_channels: int = config.NUM_CHANNELS,
     grid_size: int = config.GRID_SIZE,
-) -> tuple[float, dict[str, float]]:
+    ) -> tuple[float, dict[str, float]]:
     """Evaluate the model without updating weights.
 
     Parameters
@@ -330,15 +330,15 @@ def main() -> None:
         project="World-model-grid",
         name="run-03",
         config={
-            "learning_rate": config.LEARNING_RATE,
-            "batch_size": config.BATCH_SIZE,
+            "learning_rate": config.V_LEARNING_RATE,
+            "batch_size": config.V_BATCH_SIZE,
             "total_epochs": config.V_TOTAL_EPOCHS,
         },
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vision_model = ModelV().to(device)
-    optimizer = torch.optim.Adam(vision_model.parameters(), lr=config.LEARNING_RATE)
+    optimizer = torch.optim.Adam(vision_model.parameters(), lr=config.V_LEARNING_RATE)
 
     train_loader = get_data_loader("train")
     val_loader = get_data_loader("val")
