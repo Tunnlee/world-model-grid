@@ -140,7 +140,7 @@ class MetricTracker():
     def reset(self):
         self._sums = defaultdict(
             lambda: torch.zeros((), device=self.device, dtype=torch.float64)
-        )
+        ) 
         self._counts = defaultdict(
             lambda: torch.zeros((), device=self.device, dtype=torch.int64)
         )
@@ -160,7 +160,7 @@ class MetricTracker():
         targs: dict[str, torch.Tensor]
     ):
         pred_next_z, pred_r, pred_t = preds
-        targ_next_z, targ_r, targ_t = targs.values()
+        targ_next_z, targ_r, targ_t = targs["next_states"], targs["rewards"], targs["terminations"]
         batch_size = torch.tensor(pred_next_z.shape[0], device=self.device, dtype=torch.int64)
 
         pred_r = pred_r.view(-1)
@@ -169,27 +169,31 @@ class MetricTracker():
         targ_t = targ_t.view(-1)
 
         #State metrics
-        step_mse = F.mse_loss(pred_next_z, targ_next_z)
+        step_mse = F.mse_loss(pred_next_z, targ_next_z) #Reduction = mean
         copy_mse = F.mse_loss(current_z, targ_next_z)
-        move_mask = (targ_t == 0)
         self.add_weighted("state/step_mse", step_mse, batch_size)
         self.add_weighted("state/copy_mse", copy_mse, batch_size)
 
-        move_count = move_mask.sum()
-        if move_count > 0:
-            delta_cos_sim = F.cosine_similarity(pred_next_z[move_mask] - current_z[move_mask], targ_next_z[move_mask] - current_z[move_mask], dim=1).mean()
+        move_mask = (targ_t == 0)
+        if move_mask.any():
+            move_count = move_mask.sum()
+            delta_cos_sim = F.cosine_similarity(
+                pred_next_z[move_mask] - current_z[move_mask],
+                targ_next_z[move_mask] - current_z[move_mask],
+                dim=1,
+            ).mean()
             self.add_weighted("state/delta_cos_sim", delta_cos_sim, move_count)
 
         #Reward netrics
         safe_mask = (targ_r == config.REWARD_SAFE_STEP)
-        safe_count = safe_mask.sum()
-        if safe_count > 0:
+        if safe_mask.any():
+            safe_count = safe_mask.sum()
             safe_mae = torch.abs(pred_r[safe_mask] - targ_r[safe_mask]).mean()
             self.add_weighted("reward/safe_mae", safe_mae, safe_count)
 
         term_mask = targ_r == config.REWARD_COLLISION
-        term_count = term_mask.sum()
-        if term_count > 0:
+        if term_mask.any():
+            term_count = term_mask.sum()
             term_mae = torch.abs(pred_r[term_mask] - targ_r[term_mask]).mean()
             self.add_weighted("reward/term_mae", term_mae, term_count)
 
@@ -205,13 +209,28 @@ class MetricTracker():
         self.add_raw("termination/total_true_term", total_true_term)
         self.add_raw("termination/total_pred_term", total_pred_term)
         self.add_raw("termination/total_correct_pred", total_correct_pred)
+
+    def compute(self):
+        step_copy_ratio = self._sums["state/step_mse"] / self._sums["state/copy_mse"]
+        state_cos_sim = self._sums["state/delta_cos_sim"] / (self._counts["state/delta_cos_sim"] + 1e-8)
+
+        reward_safe_mae = self._sums["reward/safe_mae"] / (self._counts["reward/safe_mae"] + 1e-8)
+        reward_term_mae = self._sums["reward/term_mae"] / (self._counts["reward/term_mae"] + 1e-8)
+
+        term_recall = self._sums["termination/total_correct_pred"] / (self._sums["termination/total_true_term"] + 1e-8)
+        term_precision = self._sums["termination/total_correct_pred"] / (self._sums["termination/total_pred_term"] + 1e-8)
+        term_f1 = (2*term_recall * term_precision) / (term_recall + term_precision + 1e-8)
+
+        return {
+            "step_copy_ratio": step_copy_ratio.item(),
+            "state_cos_sim": state_cos_sim.item(),
+            "reward_safe_mae": reward_safe_mae.item(),
+            "reward_term_mae": reward_term_mae.item(),
+            "term_recall": term_recall.item(),
+            "term_precision": term_precision.item(),
+            "term_f1": term_f1.item(),
+        }
         
-
-
-
-
-
-
 def get_data_loader(mode: str, device: torch.device, rollout: bool = False, horizon: int = 10) -> DataLoader:
     if mode == "train":
         dataset_path = config.ENCODED_TRAIN_DATASET_PATH

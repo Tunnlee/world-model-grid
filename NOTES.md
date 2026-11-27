@@ -83,7 +83,7 @@ Ngayf 9:
         Sự ra đỏi của GELU và SiLU
     Câu hỏi:
         Làm thế nào hình dung cách neural network và non-linear activation hoạt động trong không gian?
-        Cach vẽ hình  🎅
+        Cách vẽ hình  🎅
 
 Ngày 10:
     Đã học:
@@ -105,4 +105,15 @@ Ngày 11:
     Rút ra:
         Mạng neural sử dụng affine transformation và non-inear activation để tìm ra quy luật của dữ liệu.
     Hướng đi:
-        Giảm thời gian train model
+        Giảm thời gian train + indexing
+
+Ngày 12:
+    Đã học:
+        Cách tạo Defaultdict
+        Cách quản lý dữ liệu trong class 
+        Cách quản lý đồ thị tính toán bằng detach
+    Đã làm:
+        Viết Class MetricTracker
+        Tối ưu thời gian bằng cách chuyển data lên gpu và tăng batch_size
+    Hướng đi:
+        Code tiếp compute() và val rollout
