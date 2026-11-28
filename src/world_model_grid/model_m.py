@@ -58,46 +58,75 @@ class LinearDataset(Dataset):
 
 
 class RolloutDataset(Dataset):
-    def __init__(self, dataset: dict, horizon: int = 10):
+    def __init__(
+        self,
+        dataset: dict,
+        horizon: int = config.M_HORIZON_LENGTH,
+        device: torch.device | None = None,
+    ):
         super().__init__()
-        states = dataset["states"]
-        actions = dataset["actions"]
-        next_states = dataset["next_states"]
-        rewards = dataset["rewards"]
-        terminations = dataset["terminations"]
 
-        self.trajectories = []
-        for s, a, n_s, r, t in zip(states, actions, next_states, rewards, terminations):
-            if s.shape[0] >= horizon:
-                self.trajectories.append(
-                    {
-                        "initial_state": torch.from_numpy(s[0]),  # (16,)
-                        "actions": torch.from_numpy(a[:horizon, :]),  # (H,4)
-                        "next_states": torch.from_numpy(n_s[:horizon, :]),  # (H,16)
-                        "rewards": torch.from_numpy(r[:horizon, :]).reshape(
-                            -1, 1
-                        ),  # (H,1)
-                        "terminations": torch.from_numpy(
-                            t[:horizon, :].astype(np.float32)
-                        ).reshape(-1, 1),  # (H,1)
-                    }
+        trajectories = []
+        for states, actions, next_states, rewards, terminations in zip(
+            dataset["states"],
+            dataset["actions"],
+            dataset["next_states"],
+            dataset["rewards"],
+            dataset["terminations"],
+            strict=True,
+        ):
+            if len(states) < horizon:                                                                                                                
+                continue
+
+            trajectories.append(
+                (
+                    states[0],
+                    actions[:horizon],
+                    next_states[:horizon],
+                    rewards[:horizon].reshape(-1, 1),
+                    terminations[:horizon].reshape(-1, 1),
                 )
+            )
+
+        if not trajectories:
+            raise ValueError(f"No episodes are long enough for horizon={horizon}")
+
+        tensors = tuple(
+            torch.from_numpy(np.array(field, dtype=np.float32))
+            for field in zip(*trajectories)
+        )
+
+        if device is not None and device.type == "cuda":
+            total_bytes = sum(t.numel() * t.element_size() for t in tensors)
+            free_bytes, _ = torch.cuda.mem_get_info(device)
+            if total_bytes < free_bytes * 0.5:
+                try:
+                    tensors = tuple(t.to(device) for t in tensors)
+                except torch.cuda.OutOfMemoryError:
+                    pass
+
+        (
+            self.initial_states,
+            self.actions,
+            self.next_states,
+            self.rewards,
+            self.terminations,
+        ) = tensors
 
     def __len__(self):
-        return len(self.trajectories)
+        return self.initial_states.shape[0]
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx):
         return (
             {
-                "initial_state": self.trajectories[idx]["initial_state"],
-                "actions": self.trajectories[idx]["actions"],
+                "initial_state": self.initial_states[idx],
+                "actions": self.actions[idx],
             },
-          # (B,16) and (B,H,4)
-        {
-            "next_states": self.trajectories[idx]["next_states"],
-            "rewards": self.trajectories[idx]["rewards"],
-            "terminations": self.trajectories[idx]["terminations"],
-        }  # (B, H, 16) and (B,H,16) and (B,H,1)
+            {
+                "next_states": self.next_states[idx],
+                "rewards": self.rewards[idx],
+                "terminations": self.terminations[idx],
+            },
         )
 
 
@@ -213,7 +242,10 @@ class MetricTracker():
         self.add_raw("termination/total_correct_pred", total_correct_pred)
 
     def compute(self):
-        step_copy_ratio = self._sums["state/step_mse"] / self._sums["state/copy_mse"]
+        safe_count = self._counts["reward/safe_mae"]
+        term_count = self._counts["reward/term_mae"]
+
+        step_copy_ratio = self._sums["state/step_mse"] / (self._sums["state/copy_mse"] + 1e-8)
         state_cos_sim = self._sums["state/delta_cos_sim"] / (self._counts["state/delta_cos_sim"] + 1e-8)
 
         reward_safe_mae = self._sums["reward/safe_mae"] / (self._counts["reward/safe_mae"] + 1e-8)
@@ -224,6 +256,8 @@ class MetricTracker():
         term_f1 = (2*term_recall * term_precision) / (term_recall + term_precision + 1e-8)
 
         return {
+            "safe_count": safe_count.item(),
+            "term_count": term_count.item(),
             "step_copy_ratio": step_copy_ratio.item(),
             "state_cos_sim": state_cos_sim.item(),
             "reward_safe_mae": reward_safe_mae.item(),
@@ -233,7 +267,7 @@ class MetricTracker():
             "term_f1": term_f1.item(),
         }
         
-def get_data_loader(mode: str, device: torch.device, rollout: bool = False, horizon: int = 10) -> DataLoader:
+def get_data_loader(mode: str, device: torch.device, rollout: bool = False, horizon: int = config.M_HORIZON_LENGTH) -> DataLoader:
     if mode == "train":
         dataset_path = config.ENCODED_TRAIN_DATASET_PATH
         allow_shuffle = True
@@ -303,19 +337,27 @@ def compute_loss(
 
 def compute_pos_weight(termination):
     total_steps = termination.shape[0]
-    total_term_steps = termination.sum().clamp(min=1.0)
-    total_safe_steps = total_steps - total_term_steps.clamp(min=1.0)
-    return total_safe_steps / total_term_steps
+
+    total_term_steps = termination.sum()
+    total_safe_steps = total_steps - total_term_steps
+    if total_term_steps > 0 and total_safe_steps > 0:
+        return total_safe_steps.clamp / total_term_steps 
+    else:
+        return termination.new_tensor(1.0)
+    
 
 
 def train(
     dynamic_model: ModelM,
     train_loader: DataLoader,
     optimizer: torch.optim.Adam,
-    device: torch.device,):
+    device: torch.device,
+    ):
 
     dynamic_model.train()
     total_loss = torch.zeros(1, device=device)
+    total_sample = 0
+
     for inputs, targets in train_loader:
         inputs, targets = (
             {k: v.to(device) for k, v in inputs.items()},
@@ -327,20 +369,24 @@ def train(
         pos_weight = compute_pos_weight(targets["terminations"])
         train_loss = compute_loss(prediction, targets, pos_weight=pos_weight)
 
-        total_loss += train_loss.detach()
+        batch_size = targets["rewards"].shape[0]
+        total_sample += batch_size
+        total_loss += train_loss.detach() * batch_size
         train_loss.backward()
         optimizer.step()
 
-    return total_loss.item() / len(train_loader)
+    return total_loss.item() / total_sample
 
 
 def val(dynamic_model: ModelM, val_loader: DataLoader, device: torch.device):
 
     dynamic_model.eval()
     total_loss = torch.zeros(1, device=device)
+    total_sample = 0
 
-    for inputs, targets in val_loader:
-        with torch.no_grad():
+    with torch.no_grad():
+        for inputs, targets in val_loader:
+    
             inputs, targets = (
                 {k: v.to(device) for k, v in inputs.items()},
                 {k: v.to(device) for k, v in targets.items()},
@@ -350,12 +396,49 @@ def val(dynamic_model: ModelM, val_loader: DataLoader, device: torch.device):
             pos_weight = compute_pos_weight(targets["terminations"])
             val_loss = compute_loss(
                 prediction, targets, pos_weight=pos_weight
-            )
+            )   
+            batch_size = targets["rewards"].shape[0]
+            total_sample += batch_size
+            total_loss += val_loss.detach() * batch_size
 
-            total_loss += val_loss.detach()
+    return total_loss.item() / total_sample
 
-    return total_loss.item() / len(val_loader)
+def rollout_val(
+    dynamic_model: ModelM,
+    rollout_loader: DataLoader,
+    device: torch.device,
+    horizon: int = config.M_HORIZON_LENGTH
+    ):
 
+    dynamic_model.eval()
+    trackers = [MetricTracker(device) for _ in range(horizon)]
+
+    with torch.no_grad():
+        for inputs, targets in rollout_loader:
+            current_z = inputs["initial_state"].to(device) #(B,16)
+            actions = inputs["actions"].to(device)          # (B, H, 4)
+            targ_next_z = targets["next_states"].to(device) # (B, H, 16)
+            targ_r = targets["rewards"].to(device)          # (B, H, 1)
+            targ_t = targets["terminations"].to(device)     # (B, H, 1)
+            true_current_z = current_z #(B,16)
+
+
+            for h in range(horizon):
+                pred_next_z, pred_r, pred_t = dynamic_model(current_z, actions[:, h, :])
+                trackers[h].update(
+                    current_z=true_current_z,
+                    preds=(pred_next_z, pred_r, pred_t),
+                    targs={
+                        "next_states": targ_next_z[:, h, :],
+                        "rewards": targ_r[:, h, :],
+                        "terminations": targ_t[:, h, :],
+                    },
+                )
+                current_z = pred_next_z #(B,16)
+                true_current_z = targ_next_z[:, h, :] #(B,16)
+                
+
+    return [tracker.compute() for tracker in trackers]
 
 def main():
     wandb.init(
@@ -374,6 +457,7 @@ def main():
 
     train_loader = get_data_loader("train", device=device)
     val_loader = get_data_loader("val", device=device)
+    rollout_loader = get_data_loader("val", device = device, rollout = True)
 
     best_val_loss = float("inf")
 
@@ -381,18 +465,26 @@ def main():
         avg_train_loss = train(dynamic_model, train_loader, optimizer, device)
         avg_val_loss = val(dynamic_model, val_loader, device)
 
+        logs ={
+                "Train_loss": avg_train_loss,
+                "Val_loss": avg_val_loss,
+                "Epoch": epoch + 1,
+            }
+
+        if (epoch + 1) % 5 == 0:
+            rollout_metrics = rollout_val(dynamic_model, rollout_loader, device)
+            for step, metrics in enumerate(rollout_metrics, start=1):
+                for name, value in metrics.items():
+                    logs[f"rollout/step_{step:02d}/{name}"] = value
+
+                    
         print(
             f"Epoch {epoch + 1}/{config.M_TOTAL_EPOCHS} | "
             f"Train Loss: {avg_train_loss:.6f} | Val Loss: {avg_val_loss:.6f}"
         )
 
-        wandb.log(
-            {
-                "Train_loss": avg_train_loss,
-                "Val_loss": avg_val_loss,
-                "Epoch": epoch + 1,
-            }
-        )
+
+        wandb.log(logs)
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
