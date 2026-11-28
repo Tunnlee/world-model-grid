@@ -145,12 +145,14 @@ class MetricTracker():
             lambda: torch.zeros((), device=self.device, dtype=torch.int64)
         )
     
-    def add_weighted(self, key, batch_mean, count):
+    def add_weighted(self, key, batch_mean: torch.Tensor, count: torch.Tensor):
         self._sums[key] += batch_mean.detach() * count
-        self._counts[key] += count
+        self._counts[key] += count.detach()
     
-    def add_raw(self, key, value_tensor):
-        self._sums[key] += value_tensor.detach()
+    def add_raw(self, key, batch_sum: torch.Tensor, count: torch.Tensor | None = None):
+        self._sums[key] += batch_sum.detach()
+        if count is not None:
+            self._counts[key] += count.detach()
 
     @torch.no_grad()
     def update(
@@ -169,10 +171,10 @@ class MetricTracker():
         targ_t = targ_t.view(-1)
 
         #State metrics
-        step_mse = F.mse_loss(pred_next_z, targ_next_z) #Reduction = mean
-        copy_mse = F.mse_loss(current_z, targ_next_z)
-        self.add_weighted("state/step_mse", step_mse, batch_size)
-        self.add_weighted("state/copy_mse", copy_mse, batch_size)
+        step_mse = F.mse_loss(pred_next_z, targ_next_z, reduction ="sum" ) 
+        copy_mse = F.mse_loss(current_z, targ_next_z, reduction ="sum")
+        self.add_raw("state/step_mse", step_mse)
+        self.add_raw("state/copy_mse", copy_mse)
 
         move_mask = (targ_t == 0)
         if move_mask.any():
@@ -181,21 +183,21 @@ class MetricTracker():
                 pred_next_z[move_mask] - current_z[move_mask],
                 targ_next_z[move_mask] - current_z[move_mask],
                 dim=1,
-            ).mean()
-            self.add_weighted("state/delta_cos_sim", delta_cos_sim, move_count)
+            ).sum()
+            self.add_raw("state/delta_cos_sim", delta_cos_sim, move_count)
 
         #Reward netrics
         safe_mask = (targ_r == config.REWARD_SAFE_STEP)
         if safe_mask.any():
             safe_count = safe_mask.sum()
-            safe_mae = torch.abs(pred_r[safe_mask] - targ_r[safe_mask]).mean()
-            self.add_weighted("reward/safe_mae", safe_mae, safe_count)
+            safe_mae = torch.abs(pred_r[safe_mask] - targ_r[safe_mask]).sum()
+            self.add_raw("reward/safe_mae", safe_mae, safe_count)
 
         term_mask = targ_r == config.REWARD_COLLISION
         if term_mask.any():
             term_count = term_mask.sum()
-            term_mae = torch.abs(pred_r[term_mask] - targ_r[term_mask]).mean()
-            self.add_weighted("reward/term_mae", term_mae, term_count)
+            term_mae = torch.abs(pred_r[term_mask] - targ_r[term_mask]).sum()
+            self.add_raw("reward/term_mae", term_mae, term_count)
 
 
         #Termination metrics

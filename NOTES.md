@@ -117,3 +117,7 @@ Ngày 12:
         Tối ưu thời gian bằng cách chuyển data lên gpu và tăng batch_size
     Hướng đi:
         Code tiếp compute() và val rollout
+
+Ngày 13:
+    Đã làm:
+        Refactor và phân loại lại các thành phần trong class MetricTracker
